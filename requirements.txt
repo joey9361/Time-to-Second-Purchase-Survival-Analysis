@@ -1,0 +1,6 @@
+pandas
+sqlalchemy
+matplotlib
+scikit-learn 
+psycopg2
+scikit-survival
