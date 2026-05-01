@@ -54,3 +54,12 @@ RSF_PARAMS = {
 SERVING_INPUT_TABLE_NAMES = ['staging_user_orders', 'staging_user_order_items', 'staging_user_payments']
 
 ONLINE_LOAD_FEATURES_SQL = "SELECT * FROM users_feature_engineering WHERE request_id = :request_id"
+
+ONLINE_REJECTED_ROWS_SQL = '''
+                        SELECT rejected_reason FROM rejected_user_orders WHERE request_id = :request_id 
+                        UNION ALL 
+                        SELECT rejected_reason FROM rejected_user_payments WHERE request_id = :request_id 
+                        UNION ALL 
+                        SELECT rejected_reason FROM rejected_user_order_items WHERE request_id = :request_id
+                        '''
+

@@ -93,18 +93,18 @@ invalid_orders AS (
     SELECT
         s.*,
         CASE
-            WHEN s.request_id IS NULL THEN 'NULL request_id'
-            WHEN s.order_id IS NULL THEN 'NULL order_id'
-            WHEN s.customer_id IS NULL THEN 'NULL customer_id'
-            WHEN s.customer_unique_id IS NULL THEN 'NULL customer_unique_id'
-            WHEN s.customer_zip IS NULL OR s.customer_zip !~ '^[0-9]+$' THEN 'Invalid customer_zip'
-            WHEN s.customer_city IS NULL THEN 'NULL customer_city'
-            WHEN s.customer_state IS NULL THEN 'NULL customer_state'
+            WHEN s.request_id IS NULL THEN 'NULL request_id in table staging_user_orders'
+            WHEN s.order_id IS NULL THEN 'NULL order_id in table staging_user_orders'
+            WHEN s.customer_id IS NULL THEN 'NULL customer_id in table staging_user_orders'
+            WHEN s.customer_unique_id IS NULL THEN 'NULL customer_unique_id in table staging_user_orders'
+            WHEN s.customer_zip IS NULL OR s.customer_zip !~ '^[0-9]+$' THEN 'Invalid customer_zip in table staging_user_orders'
+            WHEN s.customer_city IS NULL THEN 'NULL customer_city in table staging_user_orders'
+            WHEN s.customer_state IS NULL THEN 'NULL customer_state in table staging_user_orders'
             WHEN s.purchase_date IS NULL OR (
                 s.purchase_date !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
                 AND s.purchase_date !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$'
-            ) THEN 'Invalid purchase_date'
-            ELSE 'Unknown validation error'
+            ) THEN 'Invalid purchase_date in table staging_user_orders'
+            ELSE 'Unknown validation error in table staging_user_orders'
         END AS rejected_reason
     FROM scoped_orders s
     LEFT JOIN valid_orders v ON s.request_id = v.request_id
@@ -190,12 +190,30 @@ invalid_payments AS (
     SELECT
         s.*,
         CASE
-            WHEN s.request_id IS NULL THEN 'NULL request_id'
-            WHEN s.order_id IS NULL THEN 'NULL order_id'
-            WHEN s.payment_sequential IS NULL OR s.payment_sequential !~ '^[0-9]+$' THEN 'Invalid payment_sequential'
-            WHEN s.num_installments IS NULL OR s.num_installments !~ '^[0-9]+$' THEN 'Invalid num_installments'
-            WHEN s.payment_value IS NULL OR s.payment_value !~ '^[0-9]+(\.[0-9]{1,2})?$' THEN 'Invalid payment_value'
-            ELSE 'Unknown validation error'
+            WHEN s.request_id IS NULL THEN format(
+                'NULL request_id in table staging_user_payments, payment_sequential %s',
+                COALESCE(s.payment_sequential::text, 'NULL')
+            )
+            WHEN s.order_id IS NULL THEN format(
+                'NULL order_id in table staging_user_payments, payment_sequential %s',
+                COALESCE(s.payment_sequential::text, 'NULL')
+            )
+            WHEN s.payment_sequential IS NULL OR s.payment_sequential !~ '^[0-9]+$' THEN format(
+                'Invalid payment_sequential in table staging_user_payments, payment_sequential %s',
+                COALESCE(s.payment_sequential::text, 'NULL')
+            )
+            WHEN s.num_installments IS NULL OR s.num_installments !~ '^[0-9]+$' THEN format(
+                'Invalid num_installments in table staging_user_payments, payment_sequential %s',
+                COALESCE(s.payment_sequential::text, 'NULL')
+            )
+            WHEN s.payment_value IS NULL OR s.payment_value !~ '^[0-9]+(\.[0-9]{1,2})?$' THEN format(
+                'Invalid payment_value in table staging_user_payments, payment_sequential %s',
+                COALESCE(s.payment_sequential::text, 'NULL')
+            )
+            ELSE format(
+                'Unknown validation error in table staging_user_payments, payment_sequential %s',
+                COALESCE(s.payment_sequential::text, 'NULL')
+            )
         END AS rejected_reason
     FROM scoped_payments s
     LEFT JOIN valid_payments v
@@ -290,21 +308,57 @@ invalid_items AS (
     SELECT
         s.*,
         CASE
-            WHEN s.request_id IS NULL THEN 'NULL request_id'
-            WHEN s.order_id IS NULL THEN 'NULL order_id'
-            WHEN s.item_id IS NULL OR s.item_id !~ '^[0-9]+$' THEN 'Invalid item_id'
-            WHEN s.product_id IS NULL THEN 'NULL product_id'
-            WHEN s.seller_id IS NULL THEN 'NULL seller_id'
+            WHEN s.request_id IS NULL THEN format(
+                'NULL request_id in table staging_user_order_items, item_id %s',
+                COALESCE(s.item_id::text, 'NULL')
+            )
+            WHEN s.order_id IS NULL THEN format(
+                'NULL order_id in table staging_user_order_items, item_id %s',
+                COALESCE(s.item_id::text, 'NULL')
+            )
+            WHEN s.item_id IS NULL OR s.item_id !~ '^[0-9]+$' THEN format(
+                'Invalid item_id in table staging_user_order_items, item_id %s',
+                COALESCE(s.item_id::text, 'NULL')
+            )
+            WHEN s.product_id IS NULL THEN format(
+                'NULL product_id in table staging_user_order_items, item_id %s',
+                COALESCE(s.item_id::text, 'NULL')
+            )
+            WHEN s.seller_id IS NULL THEN format(
+                'NULL seller_id in table staging_user_order_items, item_id %s',
+                COALESCE(s.item_id::text, 'NULL')
+            )
             WHEN s.shipping_limit_date IS NULL OR (
                 s.shipping_limit_date !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
                 AND s.shipping_limit_date !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$'
-            ) THEN 'Invalid shipping_limit_date'
-            WHEN s.price IS NULL OR s.price !~ '^[0-9]+(\.[0-9]{1,2})?$' THEN 'Invalid price'
-            WHEN s.freight_value IS NULL OR s.freight_value !~ '^[0-9]+(\.[0-9]{1,2})?$' THEN 'Invalid freight_value'
-            WHEN s.seller_zip IS NULL OR s.seller_zip !~ '^[0-9]+$' THEN 'Invalid seller_zip'
-            WHEN s.seller_city IS NULL THEN 'NULL seller_city'
-            WHEN s.seller_state IS NULL THEN 'NULL seller_state'
-            ELSE 'Unknown validation error'
+            ) THEN format(
+                'Invalid shipping_limit_date in table staging_user_order_items, item_id %s',
+                COALESCE(s.item_id::text, 'NULL')
+            )
+            WHEN s.price IS NULL OR s.price !~ '^[0-9]+(\.[0-9]{1,2})?$' THEN format(
+                'Invalid price in table staging_user_order_items, item_id %s',
+                COALESCE(s.item_id::text, 'NULL')
+            )
+            WHEN s.freight_value IS NULL OR s.freight_value !~ '^[0-9]+(\.[0-9]{1,2})?$' THEN format(
+                'Invalid freight_value in table staging_user_order_items, item_id %s',
+                COALESCE(s.item_id::text, 'NULL')
+            )
+            WHEN s.seller_zip IS NULL OR s.seller_zip !~ '^[0-9]+$' THEN format(
+                'Invalid seller_zip in table staging_user_order_items, item_id %s',
+                COALESCE(s.item_id::text, 'NULL')
+            )
+            WHEN s.seller_city IS NULL THEN format(
+                'NULL seller_city in table staging_user_order_items, item_id %s',
+                COALESCE(s.item_id::text, 'NULL')
+            )
+            WHEN s.seller_state IS NULL THEN format(
+                'NULL seller_state in table staging_user_order_items, item_id %s',
+                COALESCE(s.item_id::text, 'NULL')
+            )
+            ELSE format(
+                'Unknown validation error in table staging_user_order_items, item_id %s',
+                COALESCE(s.item_id::text, 'NULL')
+            )
         END AS rejected_reason
     FROM scoped_items s
     LEFT JOIN valid_items v
