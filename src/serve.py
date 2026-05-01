@@ -1,21 +1,63 @@
 from joblib import load
-from database import create_database_manager
+from src.database import create_database_manager
 import pandas as pd
+from configuration.config import SERVING_INPUT_TABLE_NAMES
+
 
 datamanager = create_database_manager()
 
-def user_input_to_pandas(user_input: dict) -> pd.DataFrame:
-    """Convert raw user data inputs to a pandas df"""
-    # some error handling here
+class OnlineServing:
+    def __init__(self, input_data: list[dict]):
+        """Initialize a serving object with input data of each order submission to handle and make predictions"""
+        self.input_data = input_data
+        
+    def _user_input_to_pandas(self) -> list[pd.DataFrame]:
+        """Convert raw user data inputs to a pandas df"""
+        # some error handling here
+        input_dfs = []
+        for input in self.input_data:
+            df = pd.DataFrame(input, index=[0])
+            input_dfs.append(df)
+        return input_dfs
 
-    return pd.DataFrame(user_input, index=[0])
-    
-def preprocess_user_input(user_input: dict, table_name: str = 'staging_user_data'):
-    user_input_series = user_input_to_pandas(user_input)
-    datamanager.pandas_to_sql(user_input_series, table_name)
+    def _ensure_online_tables(self, conn):
+        """Ensure staging/final tables exist (idempotent; no DROP per request)."""
+        with open('sql/00_schema/00_online_staging.sql', 'r') as file:
+            sql = file.read()
+            datamanager.execute_script(sql, conn=conn)
+        with open('sql/00_schema/00_online_final.sql', 'r') as file:
+            sql = file.read()
+            datamanager.execute_script(sql, conn=conn)
 
-    datamanager.execute()
-    
+    def preprocess_user_input(self):
+        """Insert staging rows and transform request_id rows into final tables."""
+        request_id = self.input_data[0]["request_id"]
+
+        # convert user input to pandas dfs
+        user_input_dfs = self._user_input_to_pandas()
+
+        with datamanager.transaction() as conn:
+            self._ensure_online_tables(conn)
+
+            # insert dfs into own respective staging tables
+            for i in range(len(user_input_dfs)):
+                datamanager.pandas_to_sql(user_input_dfs[i], SERVING_INPUT_TABLE_NAMES[i], conn=conn)
+
+            # run transformation queries and insert into own finals tables
+            with open('sql/03_transform/03_online_transform.sql', 'r') as file:
+                sql = file.read()
+                datamanager.execute_script(sql, params={"request_id": request_id}, conn=conn)
+
+            # feature engineer within same transaction for atomicity
+            with open('sql/03_transform/03_online_feature_eng.sql', 'r') as file:
+                sql = file.read()
+                datamanager.execute(sql, params={"request_id": request_id}, conn=conn)
+
+    def make_predictions(self):
+        """Take the row belonging to respective request_id in users_feature_engineering table and serve predictions"""
+        
+        pass
+
 
 
 if __name__ == "__main__":
@@ -55,11 +97,18 @@ if __name__ == "__main__":
             "payment_value": 148.40
         }
 
-    df1 = user_input_to_pandas(final_user_orders)
-    df2 = user_input_to_pandas(final_user_order_items)
-    df3 = user_input_to_pandas(final_user_payments)
+    inputs = [final_user_orders, final_user_order_items, final_user_payments]
+    serving = OnlineServing(inputs)
+    serving.preprocess_user_input()
+   
 
-    datamanager.pandas_to_sql(df1, "staging_user_orders")
-    datamanager.pandas_to_sql(df2, "staging_user_order_items")
-    datamanager.pandas_to_sql(df3, "staging_user_payments")
+
+
+    # df1 = user_input_to_pandas(final_user_orders)
+    # df2 = user_input_to_pandas(final_user_order_items)
+    # df3 = user_input_to_pandas(final_user_payments)
+
+    # datamanager.pandas_to_sql(df1, "staging_user_orders")
+    # datamanager.pandas_to_sql(df2, "staging_user_order_items")
+    # datamanager.pandas_to_sql(df3, "staging_user_payments")
     print('gay')
