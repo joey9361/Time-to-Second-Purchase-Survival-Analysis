@@ -58,7 +58,14 @@ class OnlineServing:
         
         pass
 
-
+# periodic cleanup of old finished requests from online staging, finals, and feature engineering tables
+def periodic_online_table_cleanup(retention_days: int = 14):
+    """Delete rows from onlien staging, final, and feature engineering tables older than retention_days"""
+    with datamanager.transaction() as conn:
+        with open('sql/03_transform/03_online_cleanup.sql', 'r') as file:
+            sql = file.read()
+            datamanager.execute_script(sql, params= {'retention_days': retention_days}, conn=conn)
+        print(f'Successfully cleaned up old requests from online staging, final, and feature engineering tables older than {retention_days} days')
 
 if __name__ == "__main__":
     final_user_orders = {
