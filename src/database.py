@@ -1,10 +1,9 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import os
 from dotenv import load_dotenv
 import pandas as pd
 from contextlib import contextmanager
 from sqlalchemy.engine import URL
-import psycopg2 
 
 load_dotenv() # move this to main.py later or main entry point
 
@@ -24,13 +23,20 @@ class Database:
         finally:
             conn.close()
 
-    def load_query(self, sql, params = None):
+    @contextmanager
+    def transaction(self):
+        """Open a transaction that commits on success, rolls back on failure."""
+        with self.engine.begin() as conn:
+            yield conn
+
+    def load_query(self, sql, params=None, conn=None):
         """Load data from db into a df in memory"""
-        with self.connect_to_database() as conn:
-            df = pd.read_sql_query(sql, conn, params=params)
-            return df
+        if conn is not None:
+            return pd.read_sql_query(text(sql), conn, params=params)
+        with self.connect_to_database() as local_conn:
+            return pd.read_sql_query(text(sql), local_conn, params=params)
     
-    def minibatch_load_data(self, sql, limit = 10000, offset = 0, params = None) -> pd.DataFrame:
+    def minibatch_load_data(self, sql, limit=10000, offset=0, params=None) -> pd.DataFrame:
         """Load mini-batches of data from db into a df in memory"""
         query = f"{sql} LIMIT {limit} OFFSET {offset}"
         with self.connect_to_database() as conn:
@@ -52,17 +58,36 @@ class Database:
 
             del batch
 
-    def pandas_to_sql(self, user_input: pd.Series | pd.DataFrame, table_name: str):
+    def pandas_to_sql(self, user_input: pd.Series | pd.DataFrame, table_name: str, conn=None):
         """Convert pandas df to sql"""
-        # some error handling here
-        user_input.to_sql(name=table_name, con=self.engine, if_exists='append', index=False)
+        target_conn = conn if conn is not None else self.engine
+        user_input.to_sql(name=table_name, con=target_conn, if_exists='append', index=False)
 
-    def execute(self, sql, params = None):
+    def execute(self, sql, params=None, conn=None):
         """Execute sql queries to the connected database"""
-        with self.connect_to_database() as conn:
-            result = conn.execute(sql, parameters=params or ())
-            conn.commit()
+        query = text(sql)
+        if conn is not None:
+            result = conn.execute(query, params or {})
             return result.rowcount
+        with self.connect_to_database() as local_conn:
+            result = local_conn.execute(query, params or {})
+            local_conn.commit()
+            return result.rowcount
+
+    def execute_script(self, sql_script: str, params=None, conn=None):
+        """Execute a multi-statement SQL script sequentially."""
+        statements = [stmt.strip() for stmt in sql_script.split(";") if stmt.strip()]
+
+        def _run(target_conn):
+            for stmt in statements:
+                target_conn.execute(text(stmt), params or {})
+
+        if conn is not None:
+            _run(conn)
+            return
+        with self.connect_to_database() as local_conn:
+            _run(local_conn)
+            local_conn.commit()
 
 def create_database_manager() -> Database:
     """Create a database manager"""

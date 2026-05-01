@@ -2,7 +2,7 @@
 STUDY_END_DATE = '2018-09-03'
 
 # Query to load all features
-FEATURE_SQL = "SELECT * FROM customer_first_purchase_features_purchase_time"
+OFFLINE_LOAD_FEATURES_SQL = "SELECT * FROM customer_first_purchase_features_purchase_time"
 
 # Columns to drop from features
 DROP_COLS = [
@@ -51,3 +51,6 @@ RSF_PARAMS = {
     'random_state': 69
 }
 
+SERVING_INPUT_TABLE_NAMES = ['staging_user_orders', 'staging_user_order_items', 'staging_user_payments']
+
+ONLINE_LOAD_FEATURES_SQL = "SELECT * FROM users_feature_engineering WHERE request_id = :request_id"
