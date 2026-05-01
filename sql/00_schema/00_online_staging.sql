@@ -4,14 +4,8 @@
 -- All columns are TEXT to prevent ingestion failures
 ---------------------------------------------------------
 
-BEGIN;
-
-DROP TABLE IF EXISTS staging_user_payments CASCADE;
-DROP TABLE IF EXISTS staging_user_order_items CASCADE;
-DROP TABLE IF EXISTS staging_user_orders CASCADE;
-
 -- One row per order submission (order/customer/payment-level fields)
-CREATE TABLE staging_user_orders(
+CREATE TABLE IF NOT EXISTS staging_user_orders(
     -- request + order identity
     request_id TEXT,
     order_id TEXT,
@@ -25,11 +19,13 @@ CREATE TABLE staging_user_orders(
 
     -- order raw fields
     order_status TEXT,
-    purchase_date TEXT
+    purchase_date TEXT,
+
+    ingested_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- One row per item in an order (item/product/seller-level fields)
-CREATE TABLE staging_user_order_items(
+CREATE TABLE IF NOT EXISTS staging_user_order_items(
     -- join keys
     request_id TEXT,
     order_id TEXT,
@@ -48,11 +44,13 @@ CREATE TABLE staging_user_order_items(
     -- seller raw fields
     seller_zip TEXT,
     seller_city TEXT,
-    seller_state TEXT
+    seller_state TEXT,
+
+    ingested_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- One row per payment sequence in an order
-CREATE TABLE staging_user_payments(
+CREATE TABLE IF NOT EXISTS staging_user_payments(
     -- join keys
     request_id TEXT,
     order_id TEXT,
@@ -61,7 +59,11 @@ CREATE TABLE staging_user_payments(
     -- payment raw fields
     payment_type TEXT,
     num_installments TEXT,
-    payment_value TEXT
+    payment_value TEXT,
+
+    ingested_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-COMMIT;
+CREATE INDEX IF NOT EXISTS idx_staging_user_orders_ingested_at ON staging_user_orders (ingested_at);
+CREATE INDEX IF NOT EXISTS idx_staging_user_order_items_ingested_at ON staging_user_order_items (ingested_at);
+CREATE INDEX IF NOT EXISTS idx_staging_user_payments_ingested_at ON staging_user_payments (ingested_at);

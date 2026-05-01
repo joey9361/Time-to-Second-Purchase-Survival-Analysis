@@ -4,8 +4,6 @@
 -- Usage: pass request_id as a SQL parameter (:request_id)
 ------------------------------------------------------------------------------
 
-BEGIN;
-
 -- ------------------------
 -- Rejection/audit tables
 -- ------------------------
@@ -75,7 +73,8 @@ processed_orders AS (
             WHEN purchase_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$'
                 THEN purchase_date::TIMESTAMP::DATE
             ELSE NULL
-        END AS purchase_date
+        END AS purchase_date,
+        ingested_at
     FROM scoped_orders
 ),
 valid_orders AS (
@@ -110,51 +109,52 @@ invalid_orders AS (
     FROM scoped_orders s
     LEFT JOIN valid_orders v ON s.request_id = v.request_id
     WHERE v.request_id IS NULL
-)
-INSERT INTO final_user_orders (
-    request_id,
-    order_id,
-    customer_id,
-    customer_unique_id,
-    customer_zip,
-    customer_city,
-    customer_state,
-    order_status,
-    purchase_date
-)
-SELECT
-    request_id,
-    order_id,
-    customer_id,
-    customer_unique_id,
-    customer_zip,
-    customer_city,
-    customer_state,
-    order_status,
-    purchase_date
-FROM valid_orders
-ON CONFLICT (request_id) DO UPDATE SET
-    order_id = EXCLUDED.order_id,
-    customer_id = EXCLUDED.customer_id,
-    customer_unique_id = EXCLUDED.customer_unique_id,
-    customer_zip = EXCLUDED.customer_zip,
-    customer_city = EXCLUDED.customer_city,
-    customer_state = EXCLUDED.customer_state,
-    order_status = EXCLUDED.order_status,
-    purchase_date = EXCLUDED.purchase_date
 ),
-insert_rejected_orders AS (
-    INSERT INTO rejected_user_orders (
-        request_id, order_id, customer_id, customer_unique_id, customer_zip,
-        customer_city, customer_state, order_status, purchase_date, rejected_reason
+inserted_orders AS (
+    INSERT INTO final_user_orders (
+        request_id,
+        order_id,
+        customer_id,
+        customer_unique_id,
+        customer_zip,
+        customer_city,
+        customer_state,
+        order_status,
+        purchase_date,
+        ingested_at
     )
     SELECT
-        request_id, order_id, customer_id, customer_unique_id, customer_zip,
-        customer_city, customer_state, order_status, purchase_date, rejected_reason
-    FROM invalid_orders
-    RETURNING 1
+        request_id,
+        order_id,
+        customer_id,
+        customer_unique_id,
+        customer_zip,
+        customer_city,
+        customer_state,
+        order_status,
+        purchase_date,
+        ingested_at
+    FROM valid_orders
+    ON CONFLICT (request_id) DO UPDATE SET
+        order_id = EXCLUDED.order_id,
+        customer_id = EXCLUDED.customer_id,
+        customer_unique_id = EXCLUDED.customer_unique_id,
+        customer_zip = EXCLUDED.customer_zip,
+        customer_city = EXCLUDED.customer_city,
+        customer_state = EXCLUDED.customer_state,
+        order_status = EXCLUDED.order_status,
+        purchase_date = EXCLUDED.purchase_date,
+        ingested_at = EXCLUDED.ingested_at
+    RETURNING request_id
 )
-SELECT 1;
+INSERT INTO rejected_user_orders (
+    request_id, order_id, customer_id, customer_unique_id, customer_zip,
+    customer_city, customer_state, order_status, purchase_date, rejected_reason
+)
+SELECT
+    request_id, order_id, customer_id, customer_unique_id, customer_zip,
+    customer_city, customer_state, order_status, purchase_date, rejected_reason
+FROM invalid_orders;
 
 -- ----------------------------
 -- Transform payment-level rows
@@ -171,7 +171,8 @@ processed_payments AS (
         CASE WHEN payment_sequential ~ '^[0-9]+$' THEN payment_sequential::INTEGER ELSE NULL END AS payment_sequential,
         COALESCE(payment_type::VARCHAR(25), 'credit_card') AS payment_type,
         CASE WHEN num_installments ~ '^[0-9]+$' THEN num_installments::INTEGER ELSE NULL END AS num_installments,
-        CASE WHEN payment_value ~ '^[0-9]+(\.[0-9]{1,2})?$' THEN payment_value::NUMERIC(10,2) ELSE NULL END AS payment_value
+        CASE WHEN payment_value ~ '^[0-9]+(\.[0-9]{1,2})?$' THEN payment_value::NUMERIC(10,2) ELSE NULL END AS payment_value,
+        ingested_at
     FROM scoped_payments
 ),
 valid_payments AS (
@@ -202,39 +203,40 @@ invalid_payments AS (
        AND s.order_id = v.order_id
        AND (CASE WHEN s.payment_sequential ~ '^[0-9]+$' THEN s.payment_sequential::INTEGER ELSE NULL END) = v.payment_sequential
     WHERE v.request_id IS NULL
-)
-INSERT INTO final_user_payments (
-    request_id,
-    order_id,
-    payment_sequential,
-    payment_type,
-    num_installments,
-    payment_value
-)
-SELECT
-    request_id,
-    order_id,
-    payment_sequential,
-    payment_type,
-    num_installments,
-    payment_value
-FROM valid_payments
-ON CONFLICT (request_id, payment_sequential) DO UPDATE SET
-    order_id = EXCLUDED.order_id,
-    payment_type = EXCLUDED.payment_type,
-    num_installments = EXCLUDED.num_installments,
-    payment_value = EXCLUDED.payment_value
 ),
-insert_rejected_payments AS (
-    INSERT INTO rejected_user_payments (
-        request_id, order_id, payment_sequential, payment_type, num_installments, payment_value, rejected_reason
+inserted_payments AS (
+    INSERT INTO final_user_payments (
+        request_id,
+        order_id,
+        payment_sequential,
+        payment_type,
+        num_installments,
+        payment_value,
+        ingested_at
     )
     SELECT
-        request_id, order_id, payment_sequential, payment_type, num_installments, payment_value, rejected_reason
-    FROM invalid_payments
-    RETURNING 1
+        request_id,
+        order_id,
+        payment_sequential,
+        payment_type,
+        num_installments,
+        payment_value,
+        ingested_at
+    FROM valid_payments
+    ON CONFLICT (request_id, payment_sequential) DO UPDATE SET
+        order_id = EXCLUDED.order_id,
+        payment_type = EXCLUDED.payment_type,
+        num_installments = EXCLUDED.num_installments,
+        payment_value = EXCLUDED.payment_value,
+        ingested_at = EXCLUDED.ingested_at
+    RETURNING request_id, payment_sequential
 )
-SELECT 1;
+INSERT INTO rejected_user_payments (
+    request_id, order_id, payment_sequential, payment_type, num_installments, payment_value, rejected_reason
+)
+SELECT
+    request_id, order_id, payment_sequential, payment_type, num_installments, payment_value, rejected_reason
+FROM invalid_payments;
 
 -- ----------------------------
 -- Transform item-level rows
@@ -263,7 +265,8 @@ processed_items AS (
         COALESCE(product_category_name, 'unknown')::TEXT AS product_category_name,
         CASE WHEN seller_zip ~ '^[0-9]+$' THEN seller_zip::INTEGER ELSE NULL END AS seller_zip,
         seller_city::VARCHAR(50) AS seller_city,
-        seller_state::VARCHAR(3) AS seller_state
+        seller_state::VARCHAR(3) AS seller_state,
+        ingested_at
     FROM scoped_items
 ),
 valid_items AS (
@@ -309,63 +312,64 @@ invalid_items AS (
        AND s.order_id = v.order_id
        AND (CASE WHEN s.item_id ~ '^[0-9]+$' THEN s.item_id::INTEGER ELSE NULL END) = v.item_id
     WHERE v.request_id IS NULL
-)
-INSERT INTO final_user_order_items (
-    request_id,
-    order_id,
-    item_id,
-    product_id,
-    seller_id,
-    shipping_limit_date,
-    price,
-    freight_value,
-    product_category_name,
-    seller_zip,
-    seller_city,
-    seller_state
-)
-SELECT
-    request_id,
-    order_id,
-    item_id,
-    product_id,
-    seller_id,
-    shipping_limit_date,
-    price,
-    freight_value,
-    product_category_name,
-    seller_zip,
-    seller_city,
-    seller_state
-FROM valid_items
-ON CONFLICT (request_id, item_id) DO UPDATE SET
-    order_id = EXCLUDED.order_id,
-    product_id = EXCLUDED.product_id,
-    seller_id = EXCLUDED.seller_id,
-    shipping_limit_date = EXCLUDED.shipping_limit_date,
-    price = EXCLUDED.price,
-    freight_value = EXCLUDED.freight_value,
-    product_category_name = EXCLUDED.product_category_name,
-    seller_zip = EXCLUDED.seller_zip,
-    seller_city = EXCLUDED.seller_city,
-    seller_state = EXCLUDED.seller_state
 ),
-insert_rejected_items AS (
-    INSERT INTO rejected_user_order_items (
-        request_id, order_id, item_id, product_id, seller_id,
-        shipping_limit_date, price, freight_value, product_category_name,
-        seller_zip, seller_city, seller_state,
-        rejected_reason
+inserted_items AS (
+    INSERT INTO final_user_order_items (
+        request_id,
+        order_id,
+        item_id,
+        product_id,
+        seller_id,
+        shipping_limit_date,
+        price,
+        freight_value,
+        product_category_name,
+        seller_zip,
+        seller_city,
+        seller_state,
+        ingested_at
     )
     SELECT
-        request_id, order_id, item_id, product_id, seller_id,
-        shipping_limit_date, price, freight_value, product_category_name,
-        seller_zip, seller_city, seller_state,
-        rejected_reason
-    FROM invalid_items
-    RETURNING 1
+        request_id,
+        order_id,
+        item_id,
+        product_id,
+        seller_id,
+        shipping_limit_date,
+        price,
+        freight_value,
+        product_category_name,
+        seller_zip,
+        seller_city,
+        seller_state,
+        ingested_at
+    FROM valid_items
+    ON CONFLICT (request_id, item_id) DO UPDATE SET
+        order_id = EXCLUDED.order_id,
+        product_id = EXCLUDED.product_id,
+        seller_id = EXCLUDED.seller_id,
+        shipping_limit_date = EXCLUDED.shipping_limit_date,
+        price = EXCLUDED.price,
+        freight_value = EXCLUDED.freight_value,
+        product_category_name = EXCLUDED.product_category_name,
+        seller_zip = EXCLUDED.seller_zip,
+        seller_city = EXCLUDED.seller_city,
+        seller_state = EXCLUDED.seller_state,
+        ingested_at = EXCLUDED.ingested_at
+    RETURNING request_id, item_id
 )
-SELECT 1;
+INSERT INTO rejected_user_order_items (
+    request_id, order_id, item_id, product_id, seller_id,
+    shipping_limit_date, price, freight_value, product_category_name,
+    seller_zip, seller_city, seller_state,
+    rejected_reason
+)
+SELECT
+    request_id, order_id, item_id, product_id, seller_id,
+    shipping_limit_date, price, freight_value, product_category_name,
+    seller_zip, seller_city, seller_state,
+    rejected_reason
+FROM invalid_items;
 
 -- ----------------------------------------------------------------
 -- Ongoing seller history prep (for downstream feature engineering)
@@ -413,4 +417,4 @@ ON CONFLICT (order_id, seller_id) DO UPDATE SET
     order_seller_freight = EXCLUDED.order_seller_freight,
     num_order_items = EXCLUDED.num_order_items;
 
-COMMIT;
+

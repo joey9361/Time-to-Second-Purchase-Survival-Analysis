@@ -3,7 +3,6 @@
 -- Purpose: Build one request-scoped model feature row for online inference
 -- Usage: pass request_id as a SQL parameter (:request_id)
 ----------------------------------------------------------------------------------------
-CREATE TABLE users_feature_engineering AS
 WITH aggregated_payments AS MATERIALIZED (
     SELECT DISTINCT ON (payment_rollup.order_id)
         payment_rollup.order_id,
@@ -205,7 +204,8 @@ orders_target_features AS MATERIALIZED (
         o.purchase_date,
         o.customer_unique_id,
         o.customer_zip,
-        o.customer_state
+        o.customer_state,
+        o.ingested_at
     FROM final_user_orders AS o
     WHERE o.request_id = :request_id
 ),
@@ -224,7 +224,19 @@ seller_historical_data AS MATERIALIZED (
         ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
     )
 )
+INSERT INTO users_feature_engineering (
+    request_id, order_id, customer_id, order_status, purchase_date, customer_unique_id, customer_zip, 
+    purchase_month, purchase_day_of_week, purchased_on_weekend, most_freq_payment_type_encoded, payment_type_count,
+    total_installments, total_payment_value, num_items_in_order, total_freight_value, total_merch_value, 
+    total_order_value, avg_price, price_std, min_price, price_range, freight_price_ratio, max_freight_ratio, 
+    min_freight_ratio, has_multiple_seller_states, num_seller_states, latest_shipping_limit_date, shipping_window_days, 
+    most_exp_product_id, most_exp_price, most_exp_freight, most_exp_prod_category, most_exp_encoded_category, 
+    most_freq_category, most_freq_encoded_category, num_distinct_categories, most_freq_cat_concentration, val_seller_id, 
+    val_seller_zip, val_seller_city, val_seller_state, val_seller_encoded_state, has_duplicate_sellers, 
+    has_multiple_sellers, num_distinct_sellers, avg_seller_price, avg_seller_freight, seller_order_volume, seller_item_volume,
+    ingested_at)
 SELECT
+    orders.request_id,
     orders.order_id,
     orders.customer_id,
     orders.order_status,
@@ -273,7 +285,8 @@ SELECT
     seller_stats.avg_seller_price,
     seller_stats.avg_seller_freight,
     seller_stats.seller_order_volume,
-    seller_stats.seller_item_volume
+    seller_stats.seller_item_volume,
+    orders.ingested_at
 FROM orders_target_features AS orders
 INNER JOIN aggregated_payments AS payments
     ON orders.order_id = payments.order_id
@@ -281,4 +294,55 @@ INNER JOIN item_orders_features AS items
     ON orders.order_id = items.order_id
 INNER JOIN seller_historical_data AS seller_stats
     ON orders.order_id = seller_stats.order_id
-   AND items.val_seller_id = seller_stats.seller_id;
+   AND items.val_seller_id = seller_stats.seller_id
+ON CONFLICT (request_id) DO UPDATE SET
+    order_id = EXCLUDED.order_id,
+    customer_id = EXCLUDED.customer_id,
+    order_status = EXCLUDED.order_status,
+    purchase_date = EXCLUDED.purchase_date,
+    customer_unique_id = EXCLUDED.customer_unique_id,
+    customer_zip = EXCLUDED.customer_zip,
+    purchase_month = EXCLUDED.purchase_month,
+    purchase_day_of_week = EXCLUDED.purchase_day_of_week,
+    purchased_on_weekend = EXCLUDED.purchased_on_weekend,
+    most_freq_payment_type_encoded = EXCLUDED.most_freq_payment_type_encoded,
+    payment_type_count = EXCLUDED.payment_type_count,
+    total_installments = EXCLUDED.total_installments,
+    total_payment_value = EXCLUDED.total_payment_value,
+    num_items_in_order = EXCLUDED.num_items_in_order,
+    total_freight_value = EXCLUDED.total_freight_value,
+    total_merch_value = EXCLUDED.total_merch_value,
+    total_order_value = EXCLUDED.total_order_value,
+    avg_price = EXCLUDED.avg_price,
+    price_std = EXCLUDED.price_std,
+    min_price = EXCLUDED.min_price,
+    price_range = EXCLUDED.price_range,
+    freight_price_ratio = EXCLUDED.freight_price_ratio,
+    max_freight_ratio = EXCLUDED.max_freight_ratio,
+    min_freight_ratio = EXCLUDED.min_freight_ratio,
+    has_multiple_seller_states = EXCLUDED.has_multiple_seller_states,
+    num_seller_states = EXCLUDED.num_seller_states,
+    latest_shipping_limit_date = EXCLUDED.latest_shipping_limit_date,
+    shipping_window_days = EXCLUDED.shipping_window_days,
+    most_exp_product_id = EXCLUDED.most_exp_product_id,
+    most_exp_price = EXCLUDED.most_exp_price,
+    most_exp_freight = EXCLUDED.most_exp_freight,
+    most_exp_prod_category = EXCLUDED.most_exp_prod_category,
+    most_exp_encoded_category = EXCLUDED.most_exp_encoded_category,
+    most_freq_category = EXCLUDED.most_freq_category,
+    most_freq_encoded_category = EXCLUDED.most_freq_encoded_category,
+    num_distinct_categories = EXCLUDED.num_distinct_categories,
+    most_freq_cat_concentration = EXCLUDED.most_freq_cat_concentration,
+    val_seller_id = EXCLUDED.val_seller_id,
+    val_seller_zip = EXCLUDED.val_seller_zip,
+    val_seller_city = EXCLUDED.val_seller_city,
+    val_seller_state = EXCLUDED.val_seller_state,
+    val_seller_encoded_state = EXCLUDED.val_seller_encoded_state,
+    has_duplicate_sellers = EXCLUDED.has_duplicate_sellers,
+    has_multiple_sellers = EXCLUDED.has_multiple_sellers,
+    num_distinct_sellers = EXCLUDED.num_distinct_sellers,
+    avg_seller_price = EXCLUDED.avg_seller_price,
+    avg_seller_freight = EXCLUDED.avg_seller_freight,
+    seller_order_volume = EXCLUDED.seller_order_volume,
+    seller_item_volume = EXCLUDED.seller_item_volume,
+    ingested_at = EXCLUDED.ingested_at;
