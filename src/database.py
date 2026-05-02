@@ -5,7 +5,7 @@ import pandas as pd
 from contextlib import contextmanager
 from sqlalchemy.engine import URL
 
-load_dotenv() # move this to main.py later or main entry point
+
 
 class Database:
     """Class which manages queries to and from database"""
@@ -13,6 +13,7 @@ class Database:
         """Initialize a database manager"""
         self.connection_url = URL.create(drivername='postgresql+psycopg2', username=dbuser, password=dbpassword, host=host, port=port, database=dbname)
         self.engine = create_engine(self.connection_url)
+        
 
     @contextmanager
     def connect_to_database(self):

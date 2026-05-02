@@ -13,7 +13,7 @@ def load_data(datamanager: Database):
         (pd.Timestamp(STUDY_END_DATE) - df["t_pred_date"]).dt.days
     )
     # Drop columns that are not trainable
-    df = df.drop(DROP_COLS, axis=1)
+    df = df.drop(DROP_COLS, axis=1, errors='ignore')
     return df
 
 def split_data_stratified(df:pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:

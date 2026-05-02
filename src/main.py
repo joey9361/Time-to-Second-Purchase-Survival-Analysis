@@ -47,4 +47,5 @@ best_seed = seed_evaluations.iloc[0]['seed']
 
 # 6) Save model and artifacts
 
-dump()
+dump(tuned_model, '../artifacts/tuned_model.joblib')
+print('successfully saved model to artifacts')
