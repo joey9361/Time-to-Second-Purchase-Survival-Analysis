@@ -7,17 +7,19 @@ OFFLINE_LOAD_FEATURES_SQL = "SELECT * FROM customer_first_purchase_features_purc
 # Columns to drop from features
 DROP_COLS = [
 "order_id", "customer_id", "order_status", "purchase_date",  
-"t_pred_date", "has_second_purchase", "days_until_second_purchase", "customer_unique_id", "customer_zip", 
+"t_pred_date", 'has_second_purchase', 'days_until_second_purchase', "customer_unique_id", "customer_zip", 
 "latest_shipping_limit_date", "most_exp_product_id", "most_exp_prod_category", "most_freq_category", 
 "val_seller_id", "val_seller_zip", "val_seller_city", "val_seller_state", 'total_order_value', 'request_id', 'ingested_at']
 
 SEED_LIST = [13, 42, 67, 89, 123]
 
-BASE_TRAIN_PARAMS = {
+# Only keys accepted by sksurv RandomSurvivalForest.__init__ — used for **RSF_BASE_PARAMS
+RSF_BASE_PARAMS = {
     'n_jobs': -1,
     'random_state': SEED_LIST[0],
-    'n_repititions': 5
 }
+# Used by tuning.permuter (not an RSF hyperparameter)
+PERMUTATION_N_REPETITIONS = 5
 
 PERM_IMPORTANCE_THRESHOLD = -0.005
 # Hyperparamater tuning grid

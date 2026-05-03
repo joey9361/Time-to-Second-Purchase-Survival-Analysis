@@ -5,7 +5,7 @@ from sksurv.ensemble import RandomSurvivalForest
 from sklearn.model_selection import StratifiedKFold, GridSearchCV
 import pandas as pd
 import numpy as np
-from configuration.config import BASE_TRAIN_PARAMS
+from configuration.config import RSF_BASE_PARAMS
 
 def permuter(
     model: RandomSurvivalForest, 
@@ -21,7 +21,7 @@ def permuter(
 
     for col in X.columns:
         running_c_index_avg = 0
-        for _ in range(kwargs['n_repititions']):
+        for _ in range(kwargs['n_repetitions']):
             X_perm = X.copy()
             X_perm[col] = rng.permutation(X_perm[col].values)
 
@@ -29,7 +29,7 @@ def permuter(
             perm_c_index = concordance_index_censored(Y['has_second_purchase'], Y['days_until_second_purchase'], perm_prediction)[0]
             running_c_index_avg += perm_c_index
 
-        importance[col] = base_score - (running_c_index_avg / kwargs['n_repititions'])
+        importance[col] = base_score - (running_c_index_avg / kwargs['n_repetitions'])
 
     return pd.Series(importance).sort_values(ascending=False)
 
@@ -60,7 +60,7 @@ def hyperparameter_tuning(
     X: pd.DataFrame,
     y: np.ndarray,
     param__tuning_grid: dict,
-    estimator: BaseEstimator = RandomSurvivalForest(**BASE_TRAIN_PARAMS),
+    estimator: BaseEstimator = RandomSurvivalForest(**RSF_BASE_PARAMS),
     scoring: str | callable = None,
     cv_splits: int | Iterable | None = None,
     grid_search_params: dict = None) -> GridSearchCV:

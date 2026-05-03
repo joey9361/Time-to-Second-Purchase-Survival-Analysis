@@ -1,5 +1,5 @@
 from configuration.config import SEED_LIST
-from model import RandomSurvivalForest
+from sksurv.ensemble import RandomSurvivalForest
 from sksurv.metrics import concordance_index_censored
 import pandas as pd
 

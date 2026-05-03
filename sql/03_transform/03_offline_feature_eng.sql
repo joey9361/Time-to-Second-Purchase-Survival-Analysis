@@ -29,6 +29,7 @@ SELECT
 FROM final_payments;
 
 -- Persistent offline seller-history baseline.
+DROP TABLE IF EXISTS seller_order_history_base CASCADE;
 CREATE TABLE seller_order_history_base AS
 SELECT
     'offline'::TEXT AS source_type,
@@ -462,73 +463,4 @@ FROM customer_first_purchase_features;
 
 COMMIT;
 
-    ----- features after joining with final_orders using final_orders' columns -----
-    -- did second purchase occur - target
-    -- arrived after estimated delivery date: binary -
-    -- time difference between estimated delivery date and actual: days -
-    -- time from approved to delivered: days -
-    -- time from carrier to customer: days -
-    -- time for order approval: days -
-    -- total_order_duration_days -
-    ----- with reviews ------
-    -- review made before items delivered: binary -
-    -- premature review made, review made before estimated delivery time and before item delivered: binary -
-    -- time between delivered and first review: days, negative means review made first -
-    -- time between delivered and last review: days, negative means review made first -
-
-    ------ with item_orders -----
-    -- seller history statistics without data leakage
-        -- most valuable sellers average price -
-        -- most valuable sellers average freight -
-        -- most valuable sellers total order count (order volume) -
-        -- most valuable sellers total items sold count (item volume) -
-    -- shipping_limit_date features
-        -- seller dispatched late, latest_shipping_limit_date < delivered_carrier_date: binary -
-        -- time between latest_shipping_limit_date and delivered_carrier_date: days, negative means seller dispatched late -
-        -- time given for latest seller to dispatch item after approval, latest_shipping_limit_date - order_approval_date: days -
-        -- 
-
-    ---- aggregated values directly from order_item_parents_joined ----
-            -- order_id -
-            -- number of items in order -
-            -- total freight value -
-            -- total merchandise value -
-            -- total order value -
-            -- average price per item - 
-            -- price standard deviation -
-            -- minimum item price -
-            -- price range -
-            -- freight to merch ratio -
-            -- max freight to merch ratio per order -
-            -- min freight to merch ratio per order -
-            -- has sellers from > 1 state -
-            -- num seller states per order -
-            -- earliest shipping limit date 
-            -- shipping_window_days – max(shipping_limit_date) - min(shipping_limit_date)
-
-            ---- most_expensive_item_rows ----
-            -- most expensive product id - 
-            -- most expensive item seller_id -
-            -- most expensive item price -
-            -- most expensive item freight value -
-            -- most expensive item category -
-            -- most expensive item category class encoded -
-            -- most expensive item seller zip code -
-            -- most expensive item seller city -
-            -- most expensive item seller state -
-
-            ---- ranked_freq_category ----
-            -- most frequent category -
-            -- most frequent category class encoded -
-            -- number of distinct item categories -
-            -- proportion of most freq category items against total items in order -
-
-            ---- ranked_valuable_seller ----
-            -- most valuable seller id -
-            -- most valuable seller zip code -
-            -- most valuable seller city -
-            -- most valuable seller state -
-            -- sellers sell multiple items, has_dupe_sellers - 
-            -- number of distinct sellers -
-            -- has multiple sellers -
-
+    

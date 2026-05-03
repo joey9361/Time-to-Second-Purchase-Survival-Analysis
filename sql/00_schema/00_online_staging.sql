@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS staging_user_payments(
     ingested_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Indexes for maintenence cleanup queries
 CREATE INDEX IF NOT EXISTS idx_staging_user_orders_ingested_at ON staging_user_orders (ingested_at);
 CREATE INDEX IF NOT EXISTS idx_staging_user_order_items_ingested_at ON staging_user_order_items (ingested_at);
 CREATE INDEX IF NOT EXISTS idx_staging_user_payments_ingested_at ON staging_user_payments (ingested_at);
