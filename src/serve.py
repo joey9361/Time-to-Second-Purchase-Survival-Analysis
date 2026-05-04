@@ -160,6 +160,15 @@ def create_online_serving(input_data: list[list[dict]], model: RandomSurvivalFor
     serving.load_features()
     return serving.make_predictions()
 
+def get_categorical_options():
+    """Get all categorical options for the user to select from"""
+    from configuration.config import STATE_OPTIONS_SQL, PRODUCT_CATEGORY_OPTIONS_SQL, PAYMENT_TYPE_OPTIONS_SQL
+    with datamanager.transaction() as conn:
+        state_options = datamanager.load_query(STATE_OPTIONS_SQL, conn=conn)
+        product_category_options = datamanager.load_query(PRODUCT_CATEGORY_OPTIONS_SQL, conn=conn)
+        payment_type_options = datamanager.load_query(PAYMENT_TYPE_OPTIONS_SQL, conn=conn)
+    return state_options, product_category_options, payment_type_options
+
 if __name__ == "__main__":
     # final_user_orders = {
     #     "request_id": "req_000001",

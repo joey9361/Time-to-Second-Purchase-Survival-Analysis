@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
-from src.serve import RejectedInputError, create_online_serving
+from src.serve import RejectedInputError, create_online_serving, get_categorical_options
 from src.model import load_model
 import os
 
@@ -34,7 +34,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-
+@app.get('/get_option_categories')
+def get_option_categories(): 
+    state_options, product_category_options, payment_type_options = get_categorical_options()
+    states = state_options.iloc[:, 0].tolist()
+    product_categories = product_category_options.iloc[:, 0].tolist()
+    payment_types = payment_type_options.iloc[:, 0].tolist()
+    return {
+        'state_options': states,
+        'product_category_options': product_categories,
+        'payment_type_options': payment_types
+    }
+    return 
 @app.post("/get_prediction", response_model=Prediction)
 def get_prediction(body: list[list[dict]], request: Request):
     """

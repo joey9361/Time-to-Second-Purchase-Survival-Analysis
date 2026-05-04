@@ -33,8 +33,10 @@ def run_dashboard():
             step=1)
     st.button('Generate Form', on_click=set_num_items_and_payment_blocks, args=(num_items, num_payments))
 
+    option_categories = get_option_categories()
+
     with st.form('form', clear_on_submit=False):
-        payload = fill_form()
+        payload = fill_form(*option_categories)
         submitted = st.form_submit_button('Submit')
         if submitted:
             result = get_prediction(payload)
@@ -74,7 +76,7 @@ def get_prediction(payload: list[list[dict]]) -> dict | None:
     
 
 
-def fill_form() -> list[list[dict]]:
+def fill_form(*args) -> list[list[dict]]:
     order_level_data = {
         'request_id': st.text_input('Request ID', key='order_request_id'),
         'order_id': st.text_input('Order ID', key='order_order_id'),
@@ -82,7 +84,7 @@ def fill_form() -> list[list[dict]]:
         'customer_unique_id': st.text_input('Customer Unique ID', key='order_customer_unique_id'),
         'customer_zip': st.number_input('Customer ZIP', min_value=0, max_value=99999, value=0, key='order_customer_zip'),
         'customer_city': st.text_input('Customer City', key='order_customer_city'),
-        'customer_state': st.text_input('Customer State', key='order_customer_state'),
+        'customer_state': st.selectbox('Customer State', options=args[0], key='order_customer_state'),
         'order_status': st.text_input('Order Status', key='order_order_status'),
         'purchase_date': st.text_input('Purchase Date', key='order_purchase_date'),
     }
@@ -99,10 +101,10 @@ def fill_form() -> list[list[dict]]:
                 'shipping_limit_date': st.text_input('Shipping Limit Date', key=f'item_{i}_shipping_limit_date'),
                 'price': st.number_input('Price', min_value=0.0, value=0.0, key=f'item_{i}_price'),
                 'freight_value': st.number_input('Freight Value', min_value=0.0, value=0.0, key=f'item_{i}_freight_value'),
-                'product_category_name': st.text_input('Product Category Name', key=f'item_{i}_product_category_name'),
+                'product_category_name': st.selectbox('Product Category Name', options=args[1], key=f'item_{i}_product_category_name'),
                 'seller_zip': st.number_input('Seller ZIP', min_value=0, max_value=99999, value=0, key=f'item_{i}_seller_zip'),
                 'seller_city': st.text_input('Seller City', key=f'item_{i}_seller_city'),
-                'seller_state': st.text_input('Seller State', key=f'item_{i}_seller_state'),
+                'seller_state': st.selectbox('Seller State', options=args[0], key=f'item_{i}_seller_state'),
             }
         )
 
@@ -116,7 +118,7 @@ def fill_form() -> list[list[dict]]:
                 'payment_sequential': st.number_input(
                     'Payment Sequential', min_value=0, value=0, key=f'pay_{i}_payment_sequential'
                 ),
-                'payment_type': st.text_input('Payment Type', key=f'pay_{i}_payment_type'),
+                'payment_type': st.selectbox('Payment Type', options=args[2], key=f'pay_{i}_payment_type'),
                 'num_installments': st.number_input(
                     'Num Installments', min_value=0, value=0, key=f'pay_{i}_num_installments'
                 ),
@@ -128,6 +130,13 @@ def fill_form() -> list[list[dict]]:
 
     return [[order_level_data], item_level_data, payment_level_data]
 
-
+def get_option_categories():
+    url = f'{FASTAPI_URL}/get_option_categories'
+    response = requests.get(url)
+    data = response.json()
+    states_df = data.get('state_options')
+    product_categories_df = data.get('product_category_options')
+    payment_types_df = data.get('payment_type_options')
+    return states_df, product_categories_df, payment_types_df
 if __name__ == '__main__':
     run_dashboard()
