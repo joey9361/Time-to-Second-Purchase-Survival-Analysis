@@ -17,17 +17,6 @@ CREATE TABLE staging_customers(
     customer_state TEXT
 );
 
--- Location dataset
-DROP TABLE IF EXISTS staging_location CASCADE;
-
-CREATE TABLE staging_location(
-    zip_code TEXT,
-    latitude TEXT, 
-    longitude TEXT,
-    city TEXT, 
-    location_state TEXT
-);
-
 -- Order items dataset
 DROP TABLE IF EXISTS staging_item_orders CASCADE;
 

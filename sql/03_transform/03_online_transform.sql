@@ -59,8 +59,10 @@ WITH scoped_orders AS (
 ),
 processed_orders AS (
     SELECT
-        request_id::VARCHAR(50) AS request_id,
-        order_id::VARCHAR(50) AS order_id,
+        CASE WHEN request_id::VARCHAR(50) = '' THEN NULL
+        ELSE request_id::VARCHAR(50) END AS request_id,
+        CASE WHEN order_id::VARCHAR(50) = '' THEN NULL
+        ELSE order_id::VARCHAR(50) END AS order_id,
         customer_id::VARCHAR(50) AS customer_id,
         customer_unique_id::VARCHAR(50) AS customer_unique_id,
         CASE WHEN customer_zip ~ '^[0-9]+$' THEN customer_zip::INTEGER ELSE NULL END AS customer_zip,
@@ -78,7 +80,9 @@ processed_orders AS (
     FROM scoped_orders
 ),
 valid_orders AS (
-    SELECT *
+    -- Staging allows duplicate request_id rows (retries / double inserts). ON CONFLICT must see each key once.
+    SELECT DISTINCT ON (request_id)
+        *
     FROM processed_orders
     WHERE request_id IS NOT NULL
       AND order_id IS NOT NULL
@@ -88,12 +92,15 @@ valid_orders AS (
       AND customer_city IS NOT NULL
       AND customer_state IS NOT NULL
       AND purchase_date IS NOT NULL
+    ORDER BY request_id, ingested_at DESC NULLS LAST
 ),
 invalid_orders AS (
     SELECT
         s.*,
         CASE
+            WHEN s.request_id = '' THEN 'Empty request_id in table staging_user_orders'
             WHEN s.request_id IS NULL THEN 'NULL request_id in table staging_user_orders'
+            WHEN s.order_id = '' THEN 'Empty order_id in table staging_user_orders'
             WHEN s.order_id IS NULL THEN 'NULL order_id in table staging_user_orders'
             WHEN s.customer_id IS NULL THEN 'NULL customer_id in table staging_user_orders'
             WHEN s.customer_unique_id IS NULL THEN 'NULL customer_unique_id in table staging_user_orders'
@@ -176,7 +183,8 @@ processed_payments AS (
     FROM scoped_payments
 ),
 valid_payments AS (
-    SELECT p.*
+    SELECT DISTINCT ON (p.request_id, p.payment_sequential)
+        p.*
     FROM processed_payments p
     INNER JOIN final_user_orders o ON p.request_id = o.request_id AND p.order_id = o.order_id
     WHERE p.request_id IS NOT NULL
@@ -185,11 +193,14 @@ valid_payments AS (
       AND p.payment_type IS NOT NULL
       AND p.num_installments IS NOT NULL
       AND p.payment_value IS NOT NULL
+    ORDER BY p.request_id, p.payment_sequential, p.ingested_at DESC NULLS LAST
 ),
 invalid_payments AS (
     SELECT
         s.*,
         CASE
+            WHEN s.request_id = '' THEN 'Empty request_id in table staging_user_payments'
+            WHEN s.order_id = '' THEN 'Empty order_id in table staging_user_payments'
             WHEN s.request_id IS NULL THEN format(
                 'NULL request_id in table staging_user_payments, payment_sequential %s',
                 COALESCE(s.payment_sequential::text, 'NULL')
@@ -288,7 +299,8 @@ processed_items AS (
     FROM scoped_items
 ),
 valid_items AS (
-    SELECT p.*
+    SELECT DISTINCT ON (p.request_id, p.item_id)
+        p.*
     FROM processed_items p
     INNER JOIN final_user_orders o ON p.request_id = o.request_id AND p.order_id = o.order_id
     WHERE p.request_id IS NOT NULL
@@ -303,11 +315,14 @@ valid_items AS (
       AND p.seller_zip IS NOT NULL
       AND p.seller_city IS NOT NULL
       AND p.seller_state IS NOT NULL
+    ORDER BY p.request_id, p.item_id, p.ingested_at DESC NULLS LAST
 ),
 invalid_items AS (
     SELECT
         s.*,
         CASE
+            WHEN s.request_id = '' THEN 'Empty request_id in table staging_user_order_items'
+            WHEN s.order_id = '' THEN 'Empty order_id in table staging_user_order_items'
             WHEN s.request_id IS NULL THEN format(
                 'NULL request_id in table staging_user_order_items, item_id %s',
                 COALESCE(s.item_id::text, 'NULL')

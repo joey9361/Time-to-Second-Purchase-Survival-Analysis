@@ -225,7 +225,7 @@ seller_historical_data AS MATERIALIZED (
     )
 )
 INSERT INTO users_feature_engineering (
-    request_id, order_id, customer_id, order_status, purchase_date, customer_unique_id, customer_zip, 
+    request_id, order_id, customer_id, order_status, t_pred_date, purchase_date, customer_unique_id, customer_zip, 
     purchase_month, purchase_day_of_week, purchased_on_weekend, most_freq_payment_type_encoded, payment_type_count,
     total_installments, total_payment_value, num_items_in_order, total_freight_value, total_merch_value, 
     total_order_value, avg_price, price_std, min_price, price_range, freight_price_ratio, max_freight_ratio, 

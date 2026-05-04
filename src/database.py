@@ -4,8 +4,6 @@ import pandas as pd
 from contextlib import contextmanager
 from sqlalchemy.engine import URL
 
-
-
 class Database:
     """Class which manages queries to and from database"""
     def __init__(self, dbname: str, dbuser: str, dbpassword: str, host: str = 'localhost', port: int = 5432):

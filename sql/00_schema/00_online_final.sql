@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS users_feature_engineering(
     order_id VARCHAR(50) UNIQUE NOT NULL,
     customer_id VARCHAR(50) NOT NULL,
     order_status TEXT NOT NULL,
+    t_pred_date DATE NOT NULL,
     purchase_date DATE NOT NULL,
     customer_unique_id VARCHAR(50) NOT NULL,
     customer_zip INTEGER NOT NULL,

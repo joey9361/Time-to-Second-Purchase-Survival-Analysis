@@ -3,15 +3,27 @@ import pandas as pd
 from configuration.config import SERVING_INPUT_TABLE_NAMES, ONLINE_REJECTED_ROWS_SQL, ONLINE_LOAD_FEATURES_SQL, DROP_COLS
 from sksurv.ensemble import RandomSurvivalForest
 from src.model import align_to_model, load_model, median_survival_days, restricted_mean_survival_days
+from src.preprocessing import create_staging_finals_tables
 import os
 
 datamanager = create_database_manager()
 
+
+class RejectedInputError(Exception):
+    """Raised when online transform leaves rows in rejected tables for this request."""
+
+    def __init__(self, request_id: str, reasons: list[str]):
+        self.request_id = request_id
+        self.reasons = reasons
+        super().__init__(f"Rejected rows for request_id={request_id}")
+
+
 class OnlineServing:
-    def __init__(self, input_data: list[dict], model: RandomSurvivalForest):
+    def __init__(self, input_data: list[list[dict]], model: RandomSurvivalForest):
         """Initialize a serving object with input data of each order submission to handle and make predictions"""
         self.input_data = input_data
-        self.request_id = input_data[0]["request_id"]
+        # input_data[0] is the order table: list of one dict per request
+        self.request_id = input_data[0][0]["request_id"]
         self.features: pd.DataFrame = None
         self.model = model
 
@@ -25,18 +37,9 @@ class OnlineServing:
         # some error handling here
         input_dfs = []
         for input in self.input_data:
-            df = pd.DataFrame(input, index=[0])
+            df = pd.DataFrame(input)
             input_dfs.append(df)
         return input_dfs
-
-    def _ensure_online_tables(self, conn):
-        """Ensure staging/final tables exist (idempotent; no DROP per request)."""
-        with open('sql/00_schema/00_online_staging.sql', 'r') as file:
-            sql = file.read()
-            datamanager.execute_script(sql, conn=conn)
-        with open('sql/00_schema/00_online_final.sql', 'r') as file:
-            sql = file.read()
-            datamanager.execute_script(sql, conn=conn)
             
     def _rejected_gate_check(self, path: str, conn):
         with open(path, 'r') as file:
@@ -50,11 +53,15 @@ class OnlineServing:
                     sql = ONLINE_REJECTED_ROWS_SQL,
                     params={'request_id': self.request_id},
                     conn=conn)
-                rejected_reason = rejected_rows_df['rejected_reason']
-                for reason in rejected_reason:
+                reasons = (
+                    rejected_rows_df['rejected_reason']
+                    .dropna()
+                    .astype(str)
+                    .tolist()
+                )
+                for reason in reasons:
                     print('Rejected reason: ', reason)
-                    
-                raise ValueError(f'Rejected rows found for request_id: {self.request_id}')
+                raise RejectedInputError(self.request_id, reasons)
 
     def preprocess_user_input(self):
         """Insert staging rows and transform request_id rows into final tables."""
@@ -63,7 +70,11 @@ class OnlineServing:
         user_input_dfs = self._user_input_to_pandas()
 
         with datamanager.transaction() as conn:
-            self._ensure_online_tables(conn)
+            create_staging_finals_tables(
+                datamanager,
+                conn,
+                *('sql/00_schema/00_online_staging.sql', 'sql/00_schema/00_online_final.sql')
+            )
 
             # insert dfs into own respective staging tables
             for i in range(len(user_input_dfs)):
@@ -123,78 +134,66 @@ def periodic_online_table_cleanup(retention_days: int = 14):
             datamanager.execute_script(sql, params= {'retention_days': retention_days}, conn=conn)
         print(f'Successfully cleaned up old requests from online staging, final, and feature engineering tables older than {retention_days} days')
 
+def reset_online_tables():
+    """Reset online staging, final, and feature engineering tables"""
+    with datamanager.transaction() as conn:
+        with open('sql/maintenance/04_online_table_reset.sql', 'r') as file:
+            sql = file.read()
+            datamanager.execute_script(sql, conn=conn)
+        print('Successfully reset online staging, final, and feature engineering tables')
+
 # acts as a factory
-def create_online_serving(input_data: list[dict]) -> dict:
-    """Manage the serving layer"""
-    # call load model
-    model = load_model(os.getenv("MODEL_PATH"))
-    # instantiate OnlineServing and inject the model and input data
+def create_online_serving(input_data: list[list[dict]], model: RandomSurvivalForest | None = None) -> dict:
+    """
+    Run preprocess → features → prediction for one HTTP request.
+
+    Pass ``model`` from FastAPI ``app.state`` so the artifact is loaded once per process.
+    If ``model`` is None (e.g. scripts), it is loaded from ``MODEL_PATH``.
+
+    On validation failure (e.g. rejected rows), this raises (typically ValueError).
+    The API should translate that into an HTTP error response for the client.
+    """
+    if model is None:
+        model = load_model()
     serving = OnlineServing(input_data, model)
-    # On failure, rollback the transaction and raise an error
-    while True:
-        try:
-            serving.preprocess_user_input()
-            break
-        except ValueError as e:
-            new_input_data = None # Call API to get new input data
-            serving.new_input_data(new_input_data)
-            continue
-            raise e
-    # Get new input data and call new_input_data
-    # call load_features
+    serving.preprocess_user_input()
     serving.load_features()
-    # call make_predictions
     return serving.make_predictions()
 
 if __name__ == "__main__":
-    final_user_orders = {
-        "request_id": "req_000001",
-        "order_id": "order_000001",
-        "customer_id": "cust_000001",
-        "customer_unique_id": "custuniq_000001",
-        "customer_zip": 13083,
-        "customer_city": "campinas",
-        "customer_state": "SP",
-        "order_status": "delivered",
-        "purchase_date": "2018-08-15"
-    }
+    # final_user_orders = {
+    #     "request_id": "req_000001",
+    #     "order_id": "order_000001",
+    #     "customer_id": "cust_000001",
+    #     "customer_unique_id": "custuniq_000001",
+    #     "customer_zip": 13083,
+    #     "customer_city": "campinas",
+    #     "customer_state": "SP",
+    #     "order_status": "delivered",
+    #     "purchase_date": "2018-08-15"
+    # }
 
-    final_user_order_items = {
-            "request_id": "req_000001",
-            "order_id": "order_000001",
-            "item_id": 1,
-            "product_id": "prod_000101",
-            "seller_id": "seller_000501",
-            "shipping_limit_date": "2018-08-20",
-            "price": 129.90,
-            "freight_value": 18.50,
-            "product_category_name": "cama_mesa_banho",
-            "seller_zip": 22041,
-            "seller_city": "rio de janeiro",
-            "seller_state": "RJ"
-        }
+    # final_user_order_items = {
+    #         "request_id": "req_000001",
+    #         "order_id": "order_000001",
+    #         "item_id": 1,
+    #         "product_id": "prod_000101",
+    #         "seller_id": "seller_000501",
+    #         "shipping_limit_date": "2018-08-20",
+    #         "price": 129.90,
+    #         "freight_value": 18.50,
+    #         "product_category_name": "cama_mesa_banho",
+    #         "seller_zip": 22041,
+    #         "seller_city": "rio de janeiro",
+    #         "seller_state": "RJ"
+    #     }
         
-    final_user_payments = {
-            "request_id": "req_000001",
-            "order_id": "order_000001",
-            "payment_sequential": 1,
-            "payment_type": "credit_card",
-            "num_installments": 3,
-            "payment_value": 148.40
-        }
-
-    inputs = [final_user_orders, final_user_order_items, final_user_payments]
-    model = load_model("artifacts/tuned_model.joblib")
-    serving = OnlineServing(inputs, model)
-    serving.preprocess_user_input()
-    serving.load_features()
-    print(serving.make_predictions())
-
-    # df1 = user_input_to_pandas(final_user_orders)
-    # df2 = user_input_to_pandas(final_user_order_items)
-    # df3 = user_input_to_pandas(final_user_payments)
-
-    # datamanager.pandas_to_sql(df1, "staging_user_orders")
-    # datamanager.pandas_to_sql(df2, "staging_user_order_items")
-    # datamanager.pandas_to_sql(df3, "staging_user_payments")
-    print('gay')
+    # final_user_payments = {
+    #         "request_id": "req_000001",
+    #         "order_id": "order_000001",
+    #         "payment_sequential": 1,
+    #         "payment_type": "credit_card",
+    #         "num_installments": 3,
+    #         "payment_value": 148.40
+    #     }
+    pass
