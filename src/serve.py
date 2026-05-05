@@ -2,9 +2,9 @@ from src.database import create_database_manager
 import pandas as pd
 from configuration.config import SERVING_INPUT_TABLE_NAMES, ONLINE_REJECTED_ROWS_SQL, ONLINE_LOAD_FEATURES_SQL, DROP_COLS
 from sksurv.ensemble import RandomSurvivalForest
-from src.model import align_to_model, load_model, median_survival_days, restricted_mean_survival_days
-from src.preprocessing import create_staging_finals_tables
-import os
+from src.model import align_to_model, median_survival_days, restricted_mean_survival_days
+from src.preprocessing import create_staging_finals_tables, sql_to_string
+
 
 datamanager = create_database_manager()
 
@@ -42,26 +42,25 @@ class OnlineServing:
         return input_dfs
             
     def _rejected_gate_check(self, path: str, conn):
-        with open(path, 'r') as file:
-            sql = file.read()
-            rejected_gate_df = datamanager.load_query(sql, params={"request_id": self.request_id}, conn=conn)
-            
-            if not rejected_gate_df.iloc[0]['any_rejected_rows']:
-                print('No rejected rows found for request_id: ', self.request_id)
-            else:
-                rejected_rows_df = datamanager.load_query(
-                    sql = ONLINE_REJECTED_ROWS_SQL,
-                    params={'request_id': self.request_id},
-                    conn=conn)
-                reasons = (
-                    rejected_rows_df['rejected_reason']
-                    .dropna()
-                    .astype(str)
-                    .tolist()
-                )
-                for reason in reasons:
-                    print('Rejected reason: ', reason)
-                raise RejectedInputError(self.request_id, reasons)
+        sql = sql_to_string(path)
+        rejected_gate_df = datamanager.load_query(sql, params={"request_id": self.request_id}, conn=conn)
+        
+        if not rejected_gate_df.iloc[0]['any_rejected_rows']:
+            print('No rejected rows found for request_id: ', self.request_id)
+        else:
+            rejected_rows_df = datamanager.load_query(
+                sql = ONLINE_REJECTED_ROWS_SQL,
+                params={'request_id': self.request_id},
+                conn=conn)
+            reasons = (
+                rejected_rows_df['rejected_reason']
+                .dropna()
+                .astype(str)
+                .tolist()
+            )
+            for reason in reasons:
+                print('Rejected reason: ', reason)
+            raise RejectedInputError(self.request_id, reasons)
 
     def preprocess_user_input(self):
         """Insert staging rows and transform request_id rows into final tables."""
@@ -70,10 +69,11 @@ class OnlineServing:
         user_input_dfs = self._user_input_to_pandas()
 
         with datamanager.transaction() as conn:
+            table_paths = ('sql/00_schema/00_online_staging.sql', 'sql/00_schema/00_online_final.sql')
             create_staging_finals_tables(
                 datamanager,
                 conn,
-                *('sql/00_schema/00_online_staging.sql', 'sql/00_schema/00_online_final.sql')
+                *table_paths
             )
 
             # insert dfs into own respective staging tables
@@ -81,20 +81,18 @@ class OnlineServing:
                 datamanager.pandas_to_sql(user_input_dfs[i], SERVING_INPUT_TABLE_NAMES[i], conn=conn)
 
             # run transformation queries and insert into own finals tables
-            with open('sql/03_transform/03_online_transform.sql', 'r') as file:
-                sql = file.read()
-                datamanager.execute_script(sql, params={"request_id": self.request_id}, conn=conn)
+            sql = sql_to_string('sql/03_transform/03_online_transform.sql')
+            datamanager.execute_script(sql, params={"request_id": self.request_id}, conn=conn)
             # check if any rows belonging to request_id exist in rejected tables, 
             # if so, prevent feature engineering from running
             self._rejected_gate_check(
                 path='sql/maintenance/04_online_rejected_gate_check.sql', 
                 conn=conn)             
             # feature engineer within same transaction for atomicity
-            with open('sql/03_transform/03_online_feature_eng.sql', 'r') as file:
-                sql = file.read()
-                datamanager.execute(sql, params={"request_id": self.request_id}, conn=conn)
+            sql = sql_to_string('sql/03_transform/03_online_feature_eng.sql')
+            datamanager.execute(sql, params={"request_id": self.request_id}, conn=conn)
 
-    def load_features(self):
+    def load_features_online(self):
         """Load features into df from users_feature_engineering table into the same format as the offline data sets"""
         df = datamanager.load_query(ONLINE_LOAD_FEATURES_SQL, params={"request_id": self.request_id})
         df["t_pred_date"] = pd.to_datetime(df["t_pred_date"]) 
@@ -127,37 +125,32 @@ class OnlineServing:
 
 # periodic cleanup of old finished requests from online staging, finals, and feature engineering tables
 def periodic_online_table_cleanup(retention_days: int = 14):
-    """Delete rows from onlien staging, final, and feature engineering tables older than retention_days"""
+    """Deletes old rows from online staging/final/feature tables past retention_days."""
     with datamanager.transaction() as conn:
-        with open('sql/03_transform/03_online_cleanup.sql', 'r') as file:
-            sql = file.read()
-            datamanager.execute_script(sql, params= {'retention_days': retention_days}, conn=conn)
+        sql = sql_to_string('sql/maintenance/04_online_table_cleanup_periodic.sql')
+        datamanager.execute_script(sql, params= {'retention_days': retention_days}, conn=conn)
         print(f'Successfully cleaned up old requests from online staging, final, and feature engineering tables older than {retention_days} days')
 
 def reset_online_tables():
     """Reset online staging, final, and feature engineering tables"""
     with datamanager.transaction() as conn:
-        with open('sql/maintenance/04_online_table_reset.sql', 'r') as file:
-            sql = file.read()
-            datamanager.execute_script(sql, conn=conn)
+        sql = sql_to_string('sql/maintenance/04_online_table_reset.sql')
+        datamanager.execute_script(sql, conn=conn)
         print('Successfully reset online staging, final, and feature engineering tables')
 
 # acts as a factory
-def create_online_serving(input_data: list[list[dict]], model: RandomSurvivalForest | None = None) -> dict:
+def create_online_serving(input_data: list[list[dict]], model: RandomSurvivalForest) -> dict:
     """
-    Run preprocess → features → prediction for one HTTP request.
+    Runs preprocess, loads features, returns the prediction dict for one request.
 
-    Pass ``model`` from FastAPI ``app.state`` so the artifact is loaded once per process.
-    If ``model`` is None (e.g. scripts), it is loaded from ``MODEL_PATH``.
+    You must pass the real model object (e.g. from FastAPI app.state after startup).
+    This function does not load the .joblib file itself.
 
-    On validation failure (e.g. rejected rows), this raises (typically ValueError).
-    The API should translate that into an HTTP error response for the client.
+    Can raise for bad input / rejected rows etc.; the API turns those into HTTP errors.
     """
-    if model is None:
-        model = load_model()
     serving = OnlineServing(input_data, model)
     serving.preprocess_user_input()
-    serving.load_features()
+    serving.load_features_online()
     return serving.make_predictions()
 
 def get_categorical_options():

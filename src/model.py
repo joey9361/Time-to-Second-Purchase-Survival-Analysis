@@ -1,6 +1,5 @@
-import os
 from pathlib import Path
-
+from configuration.path import PROJECT_ROOT
 from sksurv.ensemble import RandomSurvivalForest
 import pandas as pd
 import numpy as np
@@ -29,25 +28,13 @@ def median_survival_days(step_fn) -> float | None:
         return None
     return float(t[np.argmax(mask)])
 
+def load_model(model_path: str):
+    """Loads the joblib file. Pass the path string yourself (e.g. from os.getenv('MODEL_PATH')).
 
-# Repo root (parent of ``src/``); relative MODEL_PATH must not depend on process cwd.
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-
-def resolve_model_path(model_path: str | None = None) -> Path:
-    raw = model_path if model_path is not None else os.getenv("MODEL_PATH")
-    if not raw:
-        raise ValueError("MODEL_PATH is not set and no model_path was passed")
-    p = Path(raw.strip().strip('"').strip("'"))
-    if not p.is_absolute():
-        p = (_PROJECT_ROOT / p).resolve()
-    return p
-
-
-def load_model(model_path: str | None = None):
-    """Load model from ``model_path`` or ``MODEL_PATH``; relative paths are under the repo root."""
-    path = resolve_model_path(model_path)
-    if not path.is_file():
+    If the path is relative, it is joined to the project root. Absolute paths still work.
+    """
+    path = PROJECT_ROOT / model_path
+    if not Path(path).is_file():
         raise FileNotFoundError(f"Model artifact not found: {path}")
     return load(path)
 

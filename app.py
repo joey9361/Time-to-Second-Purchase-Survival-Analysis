@@ -1,9 +1,22 @@
 import streamlit as st
 import requests
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 FASTAPI_URL = os.getenv('FASTAPI_URL', 'http://localhost:8000')
 
+
+def _sanitize_row(row: dict) -> dict:
+    """Turn blank text fields into None so JSON sends null and SQL/transform see NULL."""
+    out = {}
+    for k, v in row.items():
+        if isinstance(v, str) and v.strip() == "":
+            out[k] = None
+        else:
+            out[k] = v
+    return out
 
 def set_num_items_and_payment_blocks(*args: int):
     st.session_state['num_items'] = args[0]
@@ -86,7 +99,7 @@ def fill_form(*args) -> list[list[dict]]:
         'customer_city': st.text_input('Customer City', key='order_customer_city'),
         'customer_state': st.selectbox('Customer State', options=args[0], key='order_customer_state'),
         'order_status': st.text_input('Order Status', key='order_order_status'),
-        'purchase_date': st.text_input('Purchase Date', key='order_purchase_date'),
+        'purchase_date': st.date_input('Purchase Date', key='order_purchase_date', max_value='today'),
     }
     item_level_data = []
     for i in range(st.session_state['num_items']):
@@ -98,7 +111,7 @@ def fill_form(*args) -> list[list[dict]]:
                 'item_id': st.number_input('Item ID', min_value=0, value=0, key=f'item_{i}_item_id'),
                 'product_id': st.text_input('Product ID', key=f'item_{i}_product_id'),
                 'seller_id': st.text_input('Seller ID', key=f'item_{i}_seller_id'),
-                'shipping_limit_date': st.text_input('Shipping Limit Date', key=f'item_{i}_shipping_limit_date'),
+                'shipping_limit_date': st.date_input('Shipping Limit Date', key=f'item_{i}_shipping_limit_date'),
                 'price': st.number_input('Price', min_value=0.0, value=0.0, key=f'item_{i}_price'),
                 'freight_value': st.number_input('Freight Value', min_value=0.0, value=0.0, key=f'item_{i}_freight_value'),
                 'product_category_name': st.selectbox('Product Category Name', options=args[1], key=f'item_{i}_product_category_name'),
@@ -128,7 +141,12 @@ def fill_form(*args) -> list[list[dict]]:
             }
         )
 
-    return [[order_level_data], item_level_data, payment_level_data]
+    return [
+        [_sanitize_row(order_level_data)],
+        [_sanitize_row(row) for row in item_level_data],
+        [_sanitize_row(row) for row in payment_level_data],
+    ]
+
 
 def get_option_categories():
     url = f'{FASTAPI_URL}/get_option_categories'

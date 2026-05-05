@@ -59,10 +59,12 @@ WITH scoped_orders AS (
 ),
 processed_orders AS (
     SELECT
-        CASE WHEN request_id::VARCHAR(50) = '' THEN NULL
-        ELSE request_id::VARCHAR(50) END AS request_id,
-        CASE WHEN order_id::VARCHAR(50) = '' THEN NULL
-        ELSE order_id::VARCHAR(50) END AS order_id,
+        -- CASE WHEN request_id::VARCHAR(50) = '' THEN NULL
+        -- ELSE request_id::VARCHAR(50) END AS request_id,
+        -- CASE WHEN order_id::VARCHAR(50) = '' THEN NULL
+        -- ELSE order_id::VARCHAR(50) END AS order_id,
+        request_id::VARCHAR(50) AS request_id,
+        order_id::VARCHAR(50) AS order_id,
         customer_id::VARCHAR(50) AS customer_id,
         customer_unique_id::VARCHAR(50) AS customer_unique_id,
         CASE WHEN customer_zip ~ '^[0-9]+$' THEN customer_zip::INTEGER ELSE NULL END AS customer_zip,
@@ -98,9 +100,9 @@ invalid_orders AS (
     SELECT
         s.*,
         CASE
-            WHEN s.request_id = '' THEN 'Empty request_id in table staging_user_orders'
+            -- WHEN s.request_id = '' THEN 'Empty request_id in table staging_user_orders'
             WHEN s.request_id IS NULL THEN 'NULL request_id in table staging_user_orders'
-            WHEN s.order_id = '' THEN 'Empty order_id in table staging_user_orders'
+            -- WHEN s.order_id = '' THEN 'Empty order_id in table staging_user_orders'
             WHEN s.order_id IS NULL THEN 'NULL order_id in table staging_user_orders'
             WHEN s.customer_id IS NULL THEN 'NULL customer_id in table staging_user_orders'
             WHEN s.customer_unique_id IS NULL THEN 'NULL customer_unique_id in table staging_user_orders'

@@ -23,11 +23,17 @@ class Prediction(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load the survival model once when the process starts; reuse for every request."""
+    """Loads the model once at startup from MODEL_PATH and stores it on app.state.
+
+    If MODEL_PATH is missing or the file isn't there, startup fails (RuntimeError) so requests never run without a model.
+    """
     model_path = os.getenv("MODEL_PATH")
     if not model_path:
         raise RuntimeError("MODEL_PATH is not set")
-    app.state.model = load_model(model_path)
+    try:
+        app.state.model = load_model(model_path)
+    except FileNotFoundError as e:
+        raise RuntimeError("Model artifact not found. Please check the model path and try again or rerun model training.") from e
     yield
     app.state.model = None
 
@@ -45,7 +51,7 @@ def get_option_categories():
         'product_category_options': product_categories,
         'payment_type_options': payment_types
     }
-    return 
+
 @app.post("/get_prediction", response_model=Prediction)
 def get_prediction(body: list[list[dict]], request: Request):
     """

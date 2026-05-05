@@ -1,9 +1,9 @@
 from src.preprocessing import (
     create_staging_finals_tables,
     create_target_array,
-    load_data,
-    load_raw_staging_csvs,
-    read_sql_file,
+    load_features_offline,
+    csv_to_staging_tables,
+    sql_to_string,
     split_data_stratified,
 )
 from src.model import train_RSF_model, c_index_scorer
@@ -19,14 +19,11 @@ from configuration.config import (
     STRATIFIED_CV_PARAMS,
     DROP_COLS
 )
+from configuration.path import PROJECT_ROOT
 from pathlib import Path
-
 from dotenv import load_dotenv
 from joblib import dump
 from src.database import Database
-
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_MODEL_OUT = _PROJECT_ROOT / "artifacts" / "tuned_model.joblib"
 
 load_dotenv()
 datamanager = create_database_manager()
@@ -41,15 +38,15 @@ def run_model_training(datamanager: Database):
             conn, 
             *table_paths)
         # Load csv into database
-        load_raw_staging_csvs(datamanager, conn)
+        csv_to_staging_tables(datamanager, conn)
         # Transform data
-        transform_sql = read_sql_file('sql/03_transform/03_offline_transform.sql')
+        transform_sql = sql_to_string('sql/03_transform/03_offline_transform.sql')
         datamanager.execute_script(transform_sql, conn=conn)
         # feature engineering
-        feature_engineering_sql = read_sql_file('sql/03_transform/03_offline_feature_eng.sql')
+        feature_engineering_sql = sql_to_string('sql/03_transform/03_offline_feature_eng.sql')
         datamanager.execute_script(feature_engineering_sql, conn=conn)
     # Load the data and drop untrainable features
-    df = load_data(datamanager)
+    df = load_features_offline(datamanager)
     # Split the data into train, validation, and test sets
     train_split, val_split, test_split = split_data_stratified(df)
     # Create target arrays for train, validation, and test sets
@@ -98,9 +95,12 @@ def run_model_training(datamanager: Database):
     # best_seed = seed_evaluations.iloc[0]['seed']
 
     # 6) Save model and artifacts (path independent of cwd when run as python -m src.main)
-    _MODEL_OUT.parent.mkdir(parents=True, exist_ok=True)
-    dump(tuned_model, _MODEL_OUT)
-    print(f"successfully saved model to {_MODEL_OUT}")
+    if not Path(PROJECT_ROOT / 'artifacts').exists():
+        Path(PROJECT_ROOT / 'artifacts').mkdir(parents=True, exist_ok=True)
+
+    model_path = PROJECT_ROOT / 'artifacts' / 'tuned_model.joblib'
+    dump(tuned_model, model_path)
+    print(f"successfully saved model to {model_path}")
     return test_c_index
 
 if __name__ == '__main__':
