@@ -226,9 +226,9 @@ SELECT * FROM (
             WHEN shipping_limit_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$' THEN shipping_limit_date::TIMESTAMP::DATE
             ELSE NULL
             END AS shipping_limit_date,
-        -- Safely cast price if correct format and non zero
+        -- Safely cast price if numeric-looking and non-zero
         CASE
-            WHEN price ~ '^[0-9]+\.[0-9]{2}$' AND price::FLOAT::INTEGER != 0 THEN price::NUMERIC(10,2)
+            WHEN TRIM(price) ~ '^[0-9]+(\.[0-9]+)?$' AND TRIM(price)::NUMERIC != 0 THEN TRIM(price)::NUMERIC(10,2)
             ELSE NULL
             END AS price,
         --Safely cast freight value if correct format
@@ -320,8 +320,8 @@ SELECT * FROM ( -- Subquery to handle NULL value replacements in outer select
                 ) AS payment_type,
         COALESCE(num_installments::INTEGER, 1) AS num_installments,
 
-        CASE WHEN payment_value ~ '^[0-9]+\.[0-9]{2}$' -- replace with NULL if not of correct price format
-            THEN payment_value::NUMERIC(10,2)
+        CASE WHEN TRIM(payment_value) ~ '^[0-9]+(\.[0-9]+)?$' -- replace with NULL if not a numeric string
+            THEN TRIM(payment_value)::NUMERIC(10,2)
             ELSE NULL
             END AS payment_value
     FROM deduplicate_payment_seq AS d
@@ -445,7 +445,7 @@ CREATE TABLE rejected_item_orders AS (
                 WHEN shipping_limit_date IS NULL THEN 'NULL shipping_date'
                 WHEN seller_id IS NULL THEN 'NULL seller_id'
                 WHEN shipping_limit_date !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$' THEN 'Incorrect shipping_limit_date format'
-                WHEN price !~ '^[0-9]+\.[0-9]{2}$' THEN 'Incorrect price format'
+                WHEN TRIM(price) !~ '^[0-9]+(\.[0-9]+)?$' THEN 'Incorrect price format'
                 WHEN order_id NOT IN (SELECT order_id FROM final_orders) THEN 'order_id not in final_orders'
                 WHEN seller_id NOT IN (SELECT seller_id FROM final_sellers) THEN 'seller_id not in final_sellers'
                 WHEN product_id NOT IN (SELECT product_id FROM final_products) THEN 'product_id not in final_products'
@@ -460,7 +460,7 @@ CREATE TABLE rejected_item_orders AS (
     OR shipping_limit_date IS NULL
     OR seller_id IS NULL
     OR shipping_limit_date !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$'
-    OR price !~ '^[0-9]+\.[0-9]{2}$'
+    OR TRIM(price) !~ '^[0-9]+(\.[0-9]+)?$'
 );
 
 -- rejected customers
@@ -479,13 +479,13 @@ CREATE TABLE rejected_customers AS (
 CREATE TABLE rejected_payments AS (
     SELECT *, CASE
                 WHEN order_id IS NULL THEN 'NULL order_id'
-                WHEN payment_value !~ '^[0-9]+\.[0-9]{2}$' THEN 'Incorrect payment_value format'
+                WHEN TRIM(payment_value) !~ '^[0-9]+(\.[0-9]+)?$' THEN 'Incorrect payment_value format'
                 END AS rejected_reason
     FROM staging_payments
     WHERE order_id NOT IN (SELECT order_id FROM final_orders)
     OR order_id IS NULL
     OR payment_value IS NULL
-    OR payment_value !~ '^[0-9]+\.[0-9]{2}$'
+    OR TRIM(payment_value) !~ '^[0-9]+(\.[0-9]+)?$'
 );
 
 -- rejected reviews
