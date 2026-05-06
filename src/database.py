@@ -77,6 +77,7 @@ class Database:
         statements = [stmt.strip() for stmt in sql_script.split(";") if stmt.strip()]
 
         def _run(target_conn):
+            """Executes a multi-statement SQL script sequentially."""
             for stmt in statements:
                 target_conn.execute(text(stmt), params or {})
 

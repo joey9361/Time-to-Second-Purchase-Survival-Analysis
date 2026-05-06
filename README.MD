@@ -7,9 +7,9 @@ Brazilian Olist e-commerce dataset and serving predictions through FastAPI with 
 ## Purpose
 
 This project was built as a structured learning exercise to develop 
-end-to-end data engineering and machine learning skills from scratch. 
+end-to-end data engineering with SQL and machine learning skills from scratch. 
 The primary goal was not predictive performance but rather building 
-a complete, production-aware pipeline — from raw relational data 
+a complete, production-aware pipeline from raw relational data 
 through feature engineering to a fitted survival model.
 
 ### Pipeline Overview
@@ -86,8 +86,8 @@ only one purchase, the available signal is inherently limited. Published
 research on similar single-transaction ecommerce prediction problems 
 typically reports C-indices in the 0.58-0.68 range.
 
-Features that would meaningfully improve performance — customer demographics, 
-historical purchase frequency, external marketing data — are not present 
+Features that would meaningfully improve performance: customer demographics, 
+historical purchase frequency, external marketing data; are not present 
 in this dataset. This is a known limitation of static Kaggle datasets 
 versus production data environments.
 
@@ -108,7 +108,6 @@ engineering decisions rather than the predictive outcome.
 ├── data/raw/              # Olist CSVs (not in git if large—see Setup)
 ├── sql/
 │   ├── 00_schema/         # Offline + online DDL
-│   ├── 02_load/           # Legacy psql COPY script (optional reference)
 │   ├── 03_transform/      # Offline + online transform & feature SQL
 │   └── maintenance/       # Online cleanup, reset, rejected-row checks
 ├── src/
@@ -119,6 +118,7 @@ engineering decisions rather than the predictive outcome.
 │   ├── database.py        # DB manager
 │   └── tuning.py
 ├── artifacts/             # tuned_model.joblib (after training)
+|   |── tuned_model_metadata.json
 ├── requirements.txt
 └── README.MD
 ```
@@ -135,20 +135,55 @@ engineering decisions rather than the predictive outcome.
    py -m pip install -r requirements.txt
    ```
 
-2. **PostgreSQL**: create a database and place Olist CSV files under `data/raw/`  
-   (expected filenames are in `configuration.config.TABLE_CSV_PATH_PAIRS`).
+2. **Data + PostgreSQL**: create a database, then download Olist CSVs directly from Kaggle into `data/raw/`.
 
-3. **Environment**: create/update `.env` with at least:
+   - Create a Kaggle API token from your Kaggle account page (`kaggle.json`).
+   - Put it at `%USERPROFILE%/.kaggle/kaggle.json`.
+   - Install CLI (inside your venv):
+
+   ```powershell
+   py -m pip install kaggle
+   ```
+
+   - From project root:
+
+   ```powershell
+   kaggle datasets download -d olistbr/brazilian-ecommerce -p data/raw
+   Expand-Archive -Path data/raw/brazilian-ecommerce.zip -DestinationPath data/raw -Force
+   Remove-Item data/raw/brazilian-ecommerce.zip
+   ```
+
+   Expected filenames are listed in `configuration.config.TABLE_CSV_PATH_PAIRS`.
+
+3. **Environment**: copy `.env.example` to `.env` and set your DB credentials and paths. At minimum:
    - `DATABASENAME`, `DBUSER`, `DBPASSWORD`, `DBHOST`, `DBPORT`
-   - `MODEL_PATH=artifacts/tuned_model.joblib`
+   - `MODEL_PATH=artifacts/tuned_model.joblib` (use `artifacts/pretuned_model.joblib` if you only ran `python -m src.main --fast`)
    - `FASTAPI_URL=http://localhost:8000` (for Streamlit)
    - `FASTAPI_HOST=127.0.0.1`, `FASTAPI_PORT=8000`
 
-4. **Train model** (builds schema, loads CSVs, runs transforms, trains, saves artifact):
+4. **Train model** (builds schema, loads CSVs, runs transforms, then fits the model):
+
+   **Default (full pipeline)** — permutation feature drop, then grid search. Writes `artifacts/tuned_model.joblib` and `artifacts/tuned_model_metadata.json`. This is the run you want before serving or before using `--fast`.
 
    ```powershell
    python -m src.main
    ```
+
+   **Fast retrain** — skips permutation and grid search. Requires `artifacts/tuned_model_metadata.json` from a previous full run (same data split logic still applies). Writes `artifacts/pretuned_model.joblib`. Point `MODEL_PATH` at that file if you serve this artifact (or run full training and keep `MODEL_PATH=artifacts/tuned_model.joblib`).
+
+   ```powershell
+   python -m src.main --fast
+   ```
+
+   **Full pipeline with pieces skipped** (only when you are *not* using `--fast`):
+
+   ```powershell
+   python -m src.main --no-permutation
+   python -m src.main --no-tune
+   python -m src.main --no-permutation --no-tune
+   ```
+
+   With `--fast`, any `--no-permutation` / `--no-tune` flags are ignored; fast mode already skips those stages.
 
 5. **Run API** (new terminal, same venv):
 
@@ -164,14 +199,14 @@ engineering decisions rather than the predictive outcome.
 
 ## Reflection
 
-The biggest lesson from this project is that **the problem statement has to match what the data can actually support** — before you worry about model choice or code structure.
+The biggest lesson from this project is that **the problem statement has to match what the data can actually support** before you worry about model choice or code structure.
 
 I started without locking that down tightly enough. Partway through, the dataset constraints became obvious: almost everyone has only one observed purchase, so “uncensored” repeat-purchase events are rare and the usable temporal signal is thin. Survival methods work best when you have meaningful time-to-event variation and enough history; here, the ceiling is largely set by the data, not by tuning tricks.
 
 That led to a deliberate pivot in the target:
 
 - **Earlier idea:** model something like long-run “never purchasing again,” which implicitly assumed richer per-customer purchase history than this static extract really provides.
-- **What I shipped instead:** predict **time to a second purchase** from first-purchase information — a problem that lines up with what the tables actually contain, and that avoids pushing an already extreme class imbalance into something even harder to learn.
+- **What I shipped instead:** predict **time to a second purchase** from first-purchase information, a problem that lines up with what the tables actually contain, and that avoids pushing an already extreme class imbalance into something even harder to learn.
 
-Going forward I’m carrying the same habit: **define the outcome and leakage boundaries first**, sanity-check event rates and censoring, then commit to the pipeline. The value here is the end-to-end engineering story and honest scoping — not pretending the Olist snapshot is a full production CRM.
+Going forward I’m carrying the same habit: **define the outcome and leakage boundaries first**, sanity-check event rates and censoring, then commit to the pipeline.
 

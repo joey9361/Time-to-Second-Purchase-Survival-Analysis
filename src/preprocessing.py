@@ -8,6 +8,7 @@ from configuration.path import PROJECT_ROOT
 from src.database import Database
 
 def _align_raw_df_to_staging(table: str, df: pd.DataFrame) -> pd.DataFrame:
+    """Aligns the raw dataframe to the staging dataframe schema."""
     renames = _OLIST_STAGING_RENAMES.get(table, {})
     df = df.rename(columns=renames)
     expected = _STAGING_COLUMNS[table]
@@ -35,9 +36,6 @@ def create_staging_finals_tables(datamanager: Database, conn, *args):
 def csv_to_staging_tables(datamanager: Database, conn) -> None:
     """
     Load raw CSVs into offline staging tables.
-
-    Replaces ``sql/02_load/02_load_raw_data.sql`` which uses ``\\COPY`` — that is a **psql**
-    client command, not valid SQL for psycopg2/SQLAlchemy ``execute``.
     """
     for table, rel in TABLE_CSV_PATH_PAIRS:
         path = PROJECT_ROOT / rel
@@ -48,6 +46,7 @@ def csv_to_staging_tables(datamanager: Database, conn) -> None:
         datamanager.pandas_to_sql(df, table, conn=conn)
 
 def sql_to_string(sql_file_path: str) -> str:
+    """Converts a SQL file to a string."""
     if Path(sql_file_path).is_absolute():
         path = Path(sql_file_path)
     else:
@@ -58,6 +57,7 @@ def sql_to_string(sql_file_path: str) -> str:
         return file.read()
 
 def load_features_offline(datamanager: Database):
+    """Loads the features from the offline database."""
     # Main path: single load into memory (~90k rows; minibatch not required for this dataset)
     df = datamanager.load_query(OFFLINE_LOAD_FEATURES_SQL)
     # Convert cutoff date used for snapshot features (t_pred = purchase_date)
@@ -70,6 +70,7 @@ def load_features_offline(datamanager: Database):
     return df
 
 def split_data_stratified(df:pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Splits the data into train, validation, and test sets using a stratified approach and ordered by prediction time."""
     # Temporal sort baseline uses prediction cutoff timestamp (t_pred)
     df['t_pred_date'] = pd.to_datetime(df['t_pred_date'])
     df = df.sort_values(by='t_pred_date')
@@ -105,6 +106,7 @@ def split_data_stratified(df:pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, 
     return train_split, val_split, test_split
 
 def create_target_array(train_split: pd.DataFrame, val_split: pd.DataFrame, test_split: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Creates the target array for the train, validation, and test sets."""
     # create target component of form (event, duration)
     train_array_target = np.array(
         list(zip(train_split["has_second_purchase"], train_split["days_until_second_purchase"])),

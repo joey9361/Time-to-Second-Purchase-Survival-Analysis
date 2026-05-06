@@ -1,4 +1,27 @@
+# Secrets & local env
 .env
-tuned_model.joblib
-__pycache__
+.env.*
+!.env.example
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+.employee_churn_venv/
+
+# Olist extracts — not committed (see README)
+data/raw/*.csv
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Tests / tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

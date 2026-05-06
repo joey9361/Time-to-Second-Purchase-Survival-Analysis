@@ -20,15 +20,16 @@ from configuration.config import (
 )
 from configuration.path import PROJECT_ROOT
 from pathlib import Path
+import argparse
 import json
 from dotenv import load_dotenv
 from joblib import dump
 from src.database import Database
 
 load_dotenv()
-datamanager = create_database_manager()
 
 def _json_safe(value):
+    """Convert a value to a JSON-safe format."""
     if hasattr(value, "item"):
         return value.item()
     if isinstance(value, dict):
@@ -38,6 +39,7 @@ def _json_safe(value):
     return value
 
 def save_model(model, model_filename: str):
+    """Save a model to the artifacts directory."""
     if not Path(PROJECT_ROOT / 'artifacts').exists():
         Path(PROJECT_ROOT / 'artifacts').mkdir(parents=True, exist_ok=True)
 
@@ -45,6 +47,7 @@ def save_model(model, model_filename: str):
     dump(model, model_path)
 
 def run_model_training(datamanager: Database, fast_mode: bool = False, run_feature_permutation: bool = True, run_hyperparameter_tuning: bool = True):
+    """Run the model training pipeline given the optional flags for fast mode or tuning stages"""
     # 1) Data Preprocessing
     # create staging and final tables
     table_paths = ('sql/00_schema/00_offline_staging.sql', 'sql/00_schema/00_offline_finals.sql')
@@ -73,6 +76,7 @@ def run_model_training(datamanager: Database, fast_mode: bool = False, run_featu
     val_split = val_split.drop(columns=DROP_COLS, errors="ignore")
     test_split = test_split.drop(columns=DROP_COLS, errors="ignore")
 
+    # Skip tuning stage and train with given best parameters
     if fast_mode:
         model_meta_path = PROJECT_ROOT / 'artifacts' / 'tuned_model_metadata.json'
         if not Path(model_meta_path).exists():
@@ -127,7 +131,7 @@ def run_model_training(datamanager: Database, fast_mode: bool = False, run_featu
         tuned_model = grid_search.best_estimator_
         # Same columns as fit (permutation drop); raw test_split would mismatch feature_names_in_
         test_c_index = c_index_scorer(tuned_model, X_test, test_array_target)
-        # 6) Save model and artifacts (path independent of cwd when run as python -m src.main)
+        # Save model and artifacts (path independent of cwd when run as python -m src.main)
         save_model(tuned_model, 'tuned_model.joblib')
         model_meta_path = PROJECT_ROOT / 'artifacts' / 'tuned_model_metadata.json'
         model_metadata = {
@@ -155,6 +159,34 @@ def run_model_training(datamanager: Database, fast_mode: bool = False, run_featu
 
 
 if __name__ == '__main__':
+    # Create argument parser to input parameters from command line
+    parser = argparse.ArgumentParser(description='Train RSF pipeline (PostgreSQL → features → model).')
+    parser.add_argument(
+        '--fast',
+        action='store_true',
+        help='Reuse artifacts/tuned_model_metadata.json; no permutation, no grid search (ignores --no-* flags).',
+    )
+    parser.add_argument(
+        '--no-permutation',
+        action='store_true',
+        help='Without --fast: skip permutation-based feature dropping.',
+    )
+    parser.add_argument(
+        '--no-tune',
+        action='store_true',
+        help='Without --fast: skip hyperparameter grid search.',
+    )
+    args = parser.parse_args()
+
+    # Create database manager
     datamanager = create_database_manager()
-    test_c_index = run_model_training(datamanager)
+    if args.fast:
+        test_c_index = run_model_training(datamanager, fast_mode=True)
+    else:
+        test_c_index = run_model_training(
+            datamanager,
+            fast_mode=False,
+            run_feature_permutation=not args.no_permutation,
+            run_hyperparameter_tuning=not args.no_tune,
+        )
     print(f'Test c-index: {test_c_index}')

@@ -1,5 +1,6 @@
-from src.database import create_database_manager
+import logging
 import pandas as pd
+from src.database import create_database_manager
 from configuration.config import SERVING_INPUT_TABLE_NAMES, DROP_COLS
 from configuration.sql import (
     ONLINE_REJECTED_ROWS_SQL,
@@ -12,14 +13,15 @@ from sksurv.ensemble import RandomSurvivalForest
 from src.model import align_to_model, median_survival_days, restricted_mean_survival_days
 from src.preprocessing import create_staging_finals_tables, sql_to_string
 
+_log = logging.getLogger(__name__)
 
 datamanager = create_database_manager()
-
 
 class RejectedInputError(Exception):
     """Raised when online transform leaves rows in rejected tables for this request."""
 
     def __init__(self, request_id: str, reasons: list[str]):
+        """Initializes the RejectedInputError class."""
         self.request_id = request_id
         self.reasons = reasons
         super().__init__(f"Rejected rows for request_id={request_id}")
@@ -41,19 +43,21 @@ class OnlineServing:
         
     def _user_input_to_pandas(self) -> list[pd.DataFrame]:
         """Convert raw user data inputs to a pandas df"""
-        # some error handling here
         input_dfs = []
-        for input in self.input_data:
-            df = pd.DataFrame(input)
-            input_dfs.append(df)
+        for chunk in self.input_data:
+            input_dfs.append(pd.DataFrame(chunk))
         return input_dfs
             
     def _rejected_gate_check(self, path: str, conn):
+        """
+        Checks if any rows belonging to request_id exist in rejected tables, 
+        if so, prevent feature engineering from running by raising a RejectedInputError
+        """
         sql = sql_to_string(path)
         rejected_gate_df = datamanager.load_query(sql, params={"request_id": self.request_id}, conn=conn)
         
         if not rejected_gate_df.iloc[0]['any_rejected_rows']:
-            print('No rejected rows found for request_id: ', self.request_id)
+            _log.debug("No rejected rows for request_id=%s", self.request_id)
         else:
             rejected_rows_df = datamanager.load_query(
                 sql = ONLINE_REJECTED_ROWS_SQL,
@@ -66,7 +70,7 @@ class OnlineServing:
                 .tolist()
             )
             for reason in reasons:
-                print('Rejected reason: ', reason)
+                _log.warning("Rejected row reason (request_id=%s): %s", self.request_id, reason)
             raise RejectedInputError(self.request_id, reasons)
 
     def preprocess_user_input(self):
@@ -109,7 +113,8 @@ class OnlineServing:
     def make_predictions(self) -> dict:
         """Risk score plus simple time summaries from the predicted survival curve (days)."""
         if self.features is None or self.features.empty:
-            raise ValueError("Features not loaded; call load_features() after preprocess_user_input().")
+            raise ValueError("Features not loaded; call load_features_online() after preprocess_user_input() or" 
+                                "resubmit the request.")
 
         X = align_to_model(self.model, self.features)
         risk = float(self.model.predict(X)[0])
@@ -136,21 +141,23 @@ def periodic_online_table_cleanup(retention_days: int = 14):
     with datamanager.transaction() as conn:
         sql = sql_to_string('sql/maintenance/04_online_table_cleanup_periodic.sql')
         datamanager.execute_script(sql, params= {'retention_days': retention_days}, conn=conn)
-        print(f'Successfully cleaned up old requests from online staging, final, and feature engineering tables older than {retention_days} days')
+        _log.info(
+            "Cleaned up online staging/final/feature rows older than %s days",
+            retention_days,
+        )
 
 def reset_online_tables():
     """Reset online staging, final, and feature engineering tables"""
     with datamanager.transaction() as conn:
         sql = sql_to_string('sql/maintenance/04_online_table_reset.sql')
         datamanager.execute_script(sql, conn=conn)
-        print('Successfully reset online staging, final, and feature engineering tables')
+        _log.info("Reset online staging, final, and feature engineering tables")
 
 # acts as a factory
 def create_online_serving(input_data: list[list[dict]], model: RandomSurvivalForest) -> dict:
     """
     Runs preprocess, loads features, returns the prediction dict for one request.
 
-    You must pass the real model object (e.g. from FastAPI app.state after startup).
     This function does not load the .joblib file itself.
 
     Can raise for bad input / rejected rows etc.; the API turns those into HTTP errors.
@@ -168,40 +175,3 @@ def get_categorical_options():
         payment_type_options = datamanager.load_query(PAYMENT_TYPE_OPTIONS_SQL, conn=conn)
     return state_options, product_category_options, payment_type_options
 
-if __name__ == "__main__":
-    # final_user_orders = {
-    #     "request_id": "req_000001",
-    #     "order_id": "order_000001",
-    #     "customer_id": "cust_000001",
-    #     "customer_unique_id": "custuniq_000001",
-    #     "customer_zip": 13083,
-    #     "customer_city": "campinas",
-    #     "customer_state": "SP",
-    #     "order_status": "delivered",
-    #     "purchase_date": "2018-08-15"
-    # }
-
-    # final_user_order_items = {
-    #         "request_id": "req_000001",
-    #         "order_id": "order_000001",
-    #         "item_id": 1,
-    #         "product_id": "prod_000101",
-    #         "seller_id": "seller_000501",
-    #         "shipping_limit_date": "2018-08-20",
-    #         "price": 129.90,
-    #         "freight_value": 18.50,
-    #         "product_category_name": "cama_mesa_banho",
-    #         "seller_zip": 22041,
-    #         "seller_city": "rio de janeiro",
-    #         "seller_state": "RJ"
-    #     }
-        
-    # final_user_payments = {
-    #         "request_id": "req_000001",
-    #         "order_id": "order_000001",
-    #         "payment_sequential": 1,
-    #         "payment_type": "credit_card",
-    #         "num_installments": 3,
-    #         "payment_value": 148.40
-    #     }
-    pass

@@ -14,7 +14,7 @@ def permuter(
     base_score:float, 
     **kwargs: dict # configuration parameters
     ) -> pd.Series:
-
+    """Permutes the features and returns the importance of each feature."""
     rng = np.random.RandomState(kwargs['random_state'])
 
     importance = {}
@@ -39,7 +39,7 @@ def drop_features_by_permutation(
     X_train:pd.DataFrame, 
     X_validate:pd.DataFrame, 
     X_test:pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """"""
+    """Drops the features with importance less than the threshold."""
     permuted_drop_cols = [col for col, val in features.items() if val < importance_threshold]
     X_train_reduced = X_train.drop(permuted_drop_cols, axis=1)
     X_val_reduced = X_validate.drop(permuted_drop_cols, axis=1)
@@ -50,7 +50,7 @@ def custom_stratified_cv(
     X_df: pd.DataFrame,
     y_array: np.ndarray,
     stratified_cv_params: dict) -> list[tuple[np.ndarray, np.ndarray]]:
-    """"""
+    """Creates the stratified cross-validation splits."""
     cv_event_labels = y_array['has_second_purchase'].astype(int)
     strat_cv = StratifiedKFold(**stratified_cv_params)
     cv_splits = list(strat_cv.split(X_df, cv_event_labels))
@@ -64,7 +64,7 @@ def hyperparameter_tuning(
     scoring: str | callable = None,
     cv_splits: int | Iterable | None = None,
     grid_search_params: dict = None) -> GridSearchCV:
-    """"""
+    """Runs the grid search for the best hyperparameters."""
     grid_search = GridSearchCV(
         estimator=estimator, 
         param_grid=param__tuning_grid, 
