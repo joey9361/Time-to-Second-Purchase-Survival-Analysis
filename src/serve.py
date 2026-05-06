@@ -1,6 +1,13 @@
 from src.database import create_database_manager
 import pandas as pd
-from configuration.config import SERVING_INPUT_TABLE_NAMES, ONLINE_REJECTED_ROWS_SQL, ONLINE_LOAD_FEATURES_SQL, DROP_COLS
+from configuration.config import SERVING_INPUT_TABLE_NAMES, DROP_COLS
+from configuration.sql import (
+    ONLINE_REJECTED_ROWS_SQL,
+    ONLINE_LOAD_FEATURES_SQL,
+    STATE_OPTIONS_SQL,
+    PRODUCT_CATEGORY_OPTIONS_SQL,
+    PAYMENT_TYPE_OPTIONS_SQL,
+)
 from sksurv.ensemble import RandomSurvivalForest
 from src.model import align_to_model, median_survival_days, restricted_mean_survival_days
 from src.preprocessing import create_staging_finals_tables, sql_to_string
@@ -23,7 +30,7 @@ class OnlineServing:
         """Initialize a serving object with input data of each order submission to handle and make predictions"""
         self.input_data = input_data
         # input_data[0] is the order table: list of one dict per request
-        self.request_id = input_data[0][0]["request_id"]
+        self.request_id = input_data[0][0].get("request_id", '')
         self.features: pd.DataFrame = None
         self.model = model
 
@@ -155,7 +162,6 @@ def create_online_serving(input_data: list[list[dict]], model: RandomSurvivalFor
 
 def get_categorical_options():
     """Get all categorical options for the user to select from"""
-    from configuration.config import STATE_OPTIONS_SQL, PRODUCT_CATEGORY_OPTIONS_SQL, PAYMENT_TYPE_OPTIONS_SQL
     with datamanager.transaction() as conn:
         state_options = datamanager.load_query(STATE_OPTIONS_SQL, conn=conn)
         product_category_options = datamanager.load_query(PRODUCT_CATEGORY_OPTIONS_SQL, conn=conn)

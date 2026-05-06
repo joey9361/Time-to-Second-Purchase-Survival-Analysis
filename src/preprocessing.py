@@ -2,7 +2,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from configuration.config import _OLIST_STAGING_RENAMES, _STAGING_COLUMNS, TABLE_CSV_PATH_PAIRS
+from configuration.config import _OLIST_STAGING_RENAMES, _STAGING_COLUMNS, TABLE_CSV_PATH_PAIRS, STUDY_END_DATE
+from configuration.sql import OFFLINE_LOAD_FEATURES_SQL
 from configuration.path import PROJECT_ROOT
 from src.database import Database
 
@@ -57,7 +58,6 @@ def sql_to_string(sql_file_path: str) -> str:
         return file.read()
 
 def load_features_offline(datamanager: Database):
-    from configuration.config import STUDY_END_DATE, OFFLINE_LOAD_FEATURES_SQL
     # Main path: single load into memory (~90k rows; minibatch not required for this dataset)
     df = datamanager.load_query(OFFLINE_LOAD_FEATURES_SQL)
     # Convert cutoff date used for snapshot features (t_pred = purchase_date)

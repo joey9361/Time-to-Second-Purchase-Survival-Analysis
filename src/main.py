@@ -8,7 +8,6 @@ from src.preprocessing import (
 )
 from src.model import train_RSF_model, c_index_scorer
 from src.tuning import permuter, drop_features_by_permutation, custom_stratified_cv, hyperparameter_tuning
-from src.evaluation import seed_evaluator
 from src.database import create_database_manager
 from configuration.config import (
     GRID_SEARCH_PARAMS,
@@ -145,13 +144,7 @@ def run_model_training(datamanager: Database, fast_mode: bool = False, run_featu
         print(f"saved model metadata to {model_meta_path}")
         return test_c_index
 
-    # # 5) Model Evaluation
-    # seed_evaluations = seed_evaluator(X_train_reduced, train_array_target, X_test_reduced, test_array_target, grid_search.best_params_)
-    # average_test_c_index = seed_evaluations['test_c_index'].mean()
-    # best_seed = seed_evaluations.iloc[0]['seed']
-
-    # 6) Save model and artifacts (path independent of cwd when run as python -m src.main)
-    # if ran permutation, no hyperparameter tuning
+    # 5) Save model and artifacts when no hyperparameter tuning was run
     if run_feature_permutation:
         permutated_untuned_model = train_RSF_model(X_train_reduced, train_array_target, RSF_BASE_PARAMS)
         save_model(permutated_untuned_model, 'permutated_untuned_model.joblib')

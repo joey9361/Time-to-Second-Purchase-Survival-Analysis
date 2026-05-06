@@ -180,7 +180,7 @@ processed_payments AS (
         CASE WHEN payment_sequential ~ '^[0-9]+$' THEN payment_sequential::INTEGER ELSE NULL END AS payment_sequential,
         COALESCE(payment_type::VARCHAR(25), 'credit_card') AS payment_type,
         CASE WHEN num_installments ~ '^[0-9]+$' THEN num_installments::INTEGER ELSE NULL END AS num_installments,
-        CASE WHEN payment_value ~ '^[0-9]+(\.[0-9]{1,2})?$' THEN payment_value::NUMERIC(10,2) ELSE NULL END AS payment_value,
+        CASE WHEN TRIM(payment_value) ~ '^[0-9]+(\.[0-9]+)?$' THEN TRIM(payment_value)::NUMERIC(10,2) ELSE NULL END AS payment_value,
         ingested_at
     FROM scoped_payments
 ),
@@ -219,7 +219,7 @@ invalid_payments AS (
                 'Invalid num_installments in table staging_user_payments, payment_sequential %s',
                 COALESCE(s.payment_sequential::text, 'NULL')
             )
-            WHEN s.payment_value IS NULL OR s.payment_value !~ '^[0-9]+(\.[0-9]{1,2})?$' THEN format(
+            WHEN s.payment_value IS NULL OR TRIM(s.payment_value) !~ '^[0-9]+(\.[0-9]+)?$' THEN format(
                 'Invalid payment_value in table staging_user_payments, payment_sequential %s',
                 COALESCE(s.payment_sequential::text, 'NULL')
             )
@@ -291,8 +291,8 @@ processed_items AS (
                 THEN shipping_limit_date::TIMESTAMP::DATE
             ELSE NULL
         END AS shipping_limit_date,
-        CASE WHEN price ~ '^[0-9]+(\.[0-9]{1,2})?$' THEN price::NUMERIC(10,2) ELSE NULL END AS price,
-        CASE WHEN freight_value ~ '^[0-9]+(\.[0-9]{1,2})?$' THEN freight_value::NUMERIC(10,2) ELSE NULL END AS freight_value,
+        CASE WHEN TRIM(price) ~ '^[0-9]+(\.[0-9]+)?$' THEN TRIM(price)::NUMERIC(10,2) ELSE NULL END AS price,
+        CASE WHEN TRIM(freight_value) ~ '^[0-9]+(\.[0-9]+)?$' THEN TRIM(freight_value)::NUMERIC(10,2) ELSE NULL END AS freight_value,
         COALESCE(product_category_name, 'unknown')::TEXT AS product_category_name,
         CASE WHEN seller_zip ~ '^[0-9]+$' THEN seller_zip::INTEGER ELSE NULL END AS seller_zip,
         seller_city::VARCHAR(50) AS seller_city,
@@ -352,11 +352,11 @@ invalid_items AS (
                 'Invalid shipping_limit_date in table staging_user_order_items, item_id %s',
                 COALESCE(s.item_id::text, 'NULL')
             )
-            WHEN s.price IS NULL OR s.price !~ '^[0-9]+(\.[0-9]{1,2})?$' THEN format(
+            WHEN s.price IS NULL OR TRIM(s.price) !~ '^[0-9]+(\.[0-9]+)?$' THEN format(
                 'Invalid price in table staging_user_order_items, item_id %s',
                 COALESCE(s.item_id::text, 'NULL')
             )
-            WHEN s.freight_value IS NULL OR s.freight_value !~ '^[0-9]+(\.[0-9]{1,2})?$' THEN format(
+            WHEN s.freight_value IS NULL OR TRIM(s.freight_value) !~ '^[0-9]+(\.[0-9]+)?$' THEN format(
                 'Invalid freight_value in table staging_user_order_items, item_id %s',
                 COALESCE(s.item_id::text, 'NULL')
             )
