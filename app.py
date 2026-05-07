@@ -99,7 +99,7 @@ def fill_form(*args) -> list[list[dict]]:
         'customer_city': st.text_input('Customer City', key='order_customer_city'),
         'customer_state': st.selectbox('Customer State', options=args[0], key='order_customer_state'),
         'order_status': st.text_input('Order Status', key='order_order_status'),
-        'purchase_date': st.date_input('Purchase Date', key='order_purchase_date', max_value='today'),
+        'purchase_date': str(st.date_input('Purchase Date', key='order_purchase_date', max_value='today')),
     }
     item_level_data = []
     for i in range(st.session_state['num_items']):
@@ -111,7 +111,7 @@ def fill_form(*args) -> list[list[dict]]:
                 'item_id': st.number_input('Item ID', min_value=0, value=0, key=f'item_{i}_item_id'),
                 'product_id': st.text_input('Product ID', key=f'item_{i}_product_id'),
                 'seller_id': st.text_input('Seller ID', key=f'item_{i}_seller_id'),
-                'shipping_limit_date': st.date_input('Shipping Limit Date', key=f'item_{i}_shipping_limit_date'),
+                'shipping_limit_date': str(st.date_input('Shipping Limit Date', key=f'item_{i}_shipping_limit_date')),
                 'price': st.number_input('Price', min_value=0.0, value=0.0, key=f'item_{i}_price'),
                 'freight_value': st.number_input('Freight Value', min_value=0.0, value=0.0, key=f'item_{i}_freight_value'),
                 'product_category_name': st.selectbox('Product Category Name', options=args[1], key=f'item_{i}_product_category_name'),

@@ -113,7 +113,7 @@ class OnlineServing:
     def make_predictions(self) -> dict:
         """Risk score plus simple time summaries from the predicted survival curve (days)."""
         if self.features is None or self.features.empty:
-            raise ValueError("Features not loaded; call load_features_online() after preprocess_user_input() or" 
+            raise ValueError("Features not loaded; call load_features_online() after preprocess_user_input() or " 
                                 "resubmit the request.")
 
         X = align_to_model(self.model, self.features)
