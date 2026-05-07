@@ -79,12 +79,12 @@ def get_prediction(payload: list[list[dict]]) -> dict | None:
             return None
         if response.status_code == 200:
             return response.json()
-        st.write(f'error gay')
-        st.error(f'Error {response.status_code}: {response.text}')
+        st.error(f'Request failed ({response.status_code}). Please review the response details below.')
+        st.error(response.text)
         return None
     except requests.exceptions.ConnectionError as e:
-        st.write(f'error here')
-        st.error(f'Error: {e}')
+        st.error('Could not connect to the API. Ensure FastAPI is running and FASTAPI_URL is correct.')
+        st.error(str(e))
         return None
     
 
