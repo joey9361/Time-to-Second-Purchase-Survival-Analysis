@@ -126,4 +126,4 @@ if __name__ == "__main__":
         port=int(os.getenv("FASTAPI_PORT", '8000')),
         reload=os.getenv("DEBUG_MODE", True)  # Auto-reload when DEBUG=True
     ) 
-    pass
+    

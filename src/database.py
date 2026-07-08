@@ -66,6 +66,7 @@ class Database:
         query = text(sql)
         if conn is not None:
             result = conn.execute(query, params or {})
+            conn.commit()
             return result.rowcount
         with self.connect_to_database() as local_conn:
             result = local_conn.execute(query, params or {})

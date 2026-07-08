@@ -8,9 +8,17 @@ Brazilian Olist e-commerce dataset and serving predictions through FastAPI with 
 
 This project was built as a structured learning exercise to develop 
 end-to-end data engineering with SQL and machine learning skills from scratch. 
-The primary goal was not predictive performance but rather building 
-a complete, production-aware pipeline from raw relational data 
-through feature engineering to a fitted survival model.
+The primary learning goal was building a complete, production-aware pipeline from raw relational data 
+through feature engineering to a fitted survival model; the model was still evaluated end-to-end on a held-out test set.
+
+## Results at a glance
+
+- **Task:** predict **time to a second purchase** from first-order information (survival analysis)
+- **Model:** Random Survival Forest — 27 features after permutation-based selection, tuned via grid search
+- **Test C-index:** 0.53 (see `artifacts/tuned_model_metadata.json` after a full training run)
+- **Leakage control:** landmark time `t_pred` = first purchase date; features exclude post-landmark information
+- **Split:** temporal ordering by `t_pred_date`, stratified on event vs censored
+- **Serving:** FastAPI + Streamlit demo (train and predict paths share the same SQL feature definitions)
 
 ### Pipeline Overview
 
@@ -50,7 +58,8 @@ Risk score + survival summaries (median time, restricted mean)
 SQL lives under `sql/` (numbered folders: schema, transform, maintenance). Python resolves paths from the repo root via `configuration/path.py` so runs do not depend on cwd.
 
 ---
-# Skills Demonstrated
+
+## Skills Demonstrated
 **PostgreSQL & Data Engineering**
 - Designed and queried a normalised relational schema across 8 tables
 - Built complex feature engineering pipelines using CTEs, window functions, aggregations
@@ -74,25 +83,22 @@ SQL lives under `sql/` (numbered folders: schema, transform, maintenance). Pytho
 - **FastAPI**: model loaded once at startup; prediction endpoint maps validation/DB errors to HTTP 422 where appropriate.
 - **Streamlit** dashboard calling the API; blank form fields sent as JSON `null` for SQL.
 
-Every bullet here is something concrete a hiring manager can ask you about in an interview. That is the point.
-
 ---
 
 ## Results and Limitations
 
+On the held-out test set, the tuned model achieves a **C-index of ~0.53**. That is below published ranges for similar single-transaction ecommerce problems (often ~0.58–0.68), which is expected given the data constraints below.
+
 The fundamental challenge is predicting repeat purchase behaviour from 
 a single transaction. With 94.5% of customers in the dataset making 
-only one purchase, the available signal is inherently limited. Published 
-research on similar single-transaction ecommerce prediction problems 
-typically reports C-indices in the 0.58-0.68 range.
+only one purchase, the available signal is inherently limited.
 
 Features that would meaningfully improve performance: customer demographics, 
 historical purchase frequency, external marketing data; are not present 
 in this dataset. This is a known limitation of static Kaggle datasets 
 versus production data environments.
 
-The value of this project lies in the pipeline architecture and 
-engineering decisions rather than the predictive outcome.
+The main value of this project is the pipeline architecture and engineering decisions (SQL feature layer, train/serve parity, leakage boundaries), with an honestly reported model metric rather than an overstated benchmark.
 
 ---
 
@@ -118,7 +124,7 @@ engineering decisions rather than the predictive outcome.
 │   ├── database.py        # DB manager
 │   └── tuning.py
 ├── artifacts/             # tuned_model.joblib (after training)
-|   |── tuned_model_metadata.json
+│   └── tuned_model_metadata.json
 ├── requirements.txt
 └── README.MD
 ```
@@ -135,7 +141,7 @@ engineering decisions rather than the predictive outcome.
    py -m pip install -r requirements.txt
    ```
 
-2. **Data + PostgreSQL**: create a database, then download Olist CSVs directly from Kaggle into `data/raw/`.
+2. **Data + PostgreSQL**: create a database, then download Olist CSVs from [Kaggle (Brazilian E-Commerce)](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) into `data/raw/`.
 
    - Create a Kaggle API token from your Kaggle account page (`kaggle.json`).
    - Put it at `%USERPROFILE%/.kaggle/kaggle.json`.
@@ -196,6 +202,8 @@ engineering decisions rather than the predictive outcome.
    ```powershell
    streamlit run app.py
    ```
+
+   Submit a first-purchase scenario in the form to exercise the full online path: staging → transform → feature SQL → API prediction.
 
 ## Reflection
 
