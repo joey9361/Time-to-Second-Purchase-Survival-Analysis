@@ -1,6 +1,6 @@
 # E-commerce customer survival (Olist)
 
-An end-to-end machine learning pipeline built on PostgreSQL and Python, 
+A machine learning pipeline built on PostgreSQL and Python, 
 applying survival analysis to model customer return behaviour on the 
 Brazilian Olist e-commerce dataset and serving predictions through FastAPI with a streamlit dashboard.
 
